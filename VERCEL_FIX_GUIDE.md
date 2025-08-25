@@ -19,13 +19,22 @@
 3. 添加以下环境变量：
 
 ```bash
+# 飞书应用配置
 FEISHU_APP_ID=cli_a8223aa97ffad013
 FEISHU_APP_SECRET=buUtzUTcwsSrj4k9IB4zLeyb1g3rO4Fp
 FEISHU_REDIRECT_URI=https://0823-3contract.vercel.app/api/auth/callback
+
+# 应用基础配置
 NEXT_PUBLIC_APP_URL=https://0823-3contract.vercel.app
+NODE_ENV=production
+
+# 安全配置
 ENCRYPTION_KEY=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
 JWT_SECRET=Kv8+7X2mR9pL3nQ5wE8tY6uI0oP1aS2dF4gH7jK9lM=
-NODE_ENV=production
+
+# OCR服务配置（重要！）
+GOOGLE_API_KEY=AIzaSyBtw7WLw0Lf749k0j5yeKJpjz1AfWgDsuA
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
 ### 2. 配置飞书应用回调地址

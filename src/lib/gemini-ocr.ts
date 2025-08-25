@@ -46,15 +46,23 @@ export class GeminiOCRService {
     this.maxRetries = 3;
     this.timeout = 30000;
 
+    console.log('[GeminiOCR] 初始化OCR服务...', {
+      hasApiKey: !!this.apiKey,
+      apiKeyLength: this.apiKey?.length || 0,
+      model: this.model,
+      nodeEnv: process.env.NODE_ENV,
+      isServer: typeof window === 'undefined',
+    });
+
     // 在构建时允许缺少API Key
     if (process.env.NODE_ENV === 'production' && typeof window === 'undefined' && !this.apiKey) {
-      console.warn('⚠️ Google API Key未配置，构建时跳过验证');
+      console.warn('[GeminiOCR] ⚠️ Google API Key未配置，构建时跳过验证');
       this.apiKey = 'build-time-placeholder';
       return;
     }
 
     if (!this.apiKey) {
-      console.error('❌ Google API Key未配置。请检查环境变量GOOGLE_API_KEY');
+      console.error('[GeminiOCR] ❌ Google API Key未配置。请检查环境变量GOOGLE_API_KEY');
       throw new Error('Google API Key is required for Gemini OCR service. Please check GOOGLE_API_KEY environment variable.');
     }
 
@@ -62,12 +70,15 @@ export class GeminiOCRService {
     if (this.apiKey !== 'build-time-placeholder') {
       const apiKeyPattern = /^AIza[0-9A-Za-z-_]{35}$/;
       if (!apiKeyPattern.test(this.apiKey)) {
-        console.error('❌ Google API Key格式不正确');
+        console.error('[GeminiOCR] ❌ Google API Key格式不正确:', {
+          keyLength: this.apiKey.length,
+          keyPrefix: this.apiKey.substring(0, 8),
+        });
         throw new Error('Invalid Google API Key format. Please check your GOOGLE_API_KEY.');
       }
     }
 
-    console.log('✅ Gemini OCR服务初始化成功');
+    console.log('[GeminiOCR] ✅ Gemini OCR服务初始化成功');
   }
 
   /**

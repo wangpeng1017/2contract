@@ -9,12 +9,25 @@ import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
 export async function POST(request: NextRequest) {
   return withAuth(request, async (req, user) => {
     try {
+      console.log('[OCR Extract] 开始处理OCR请求...');
+
       const formData = await req.formData();
       const file = formData.get('image') as File;
       const extractStructured = formData.get('extractStructured') === 'true';
       const language = formData.get('language') as string || 'zh-CN';
 
+      console.log('[OCR Extract] 请求参数:', {
+        hasFile: !!file,
+        fileName: file?.name,
+        fileSize: file?.size,
+        fileType: file?.type,
+        extractStructured,
+        language,
+        userId: user?.sub,
+      });
+
       if (!file) {
+        console.error('[OCR Extract] 缺少图片文件');
         return NextResponse.json(
           createErrorResponse('MISSING_IMAGE', '缺少图片文件'),
           { status: 400 }
@@ -39,9 +52,11 @@ export async function POST(request: NextRequest) {
       }
 
       try {
+        console.log('[OCR Extract] 开始OCR处理...');
         let result;
-        
+
         if (extractStructured) {
+          console.log('[OCR Extract] 执行结构化信息提取...');
           // 结构化信息提取
           result = await geminiOCR.extractStructuredData(file, {
             language,
@@ -49,6 +64,7 @@ export async function POST(request: NextRequest) {
             timeout: 30000
           });
         } else {
+          console.log('[OCR Extract] 执行基础文字识别...');
           // 基础文字识别
           result = await geminiOCR.extractText(file, {
             language,
@@ -56,6 +72,13 @@ export async function POST(request: NextRequest) {
             timeout: 30000
           });
         }
+
+        console.log('[OCR Extract] OCR处理完成:', {
+          textLength: result.text?.length || 0,
+          confidence: result.confidence,
+          processingTime: result.processingTime,
+          hasStructuredData: !!result.structuredData,
+        });
 
         // 记录使用情况（用于成本控制）
         await recordOCRUsage(user.sub, file.size, result.processingTime);
@@ -74,27 +97,53 @@ export async function POST(request: NextRequest) {
         );
 
       } catch (ocrError) {
-        console.error('OCR processing error:', ocrError);
-        
+        console.error('[OCR Extract] OCR处理错误:', ocrError);
+
+        // 详细的错误信息
+        const errorMessage = ocrError instanceof Error ? ocrError.message : 'Unknown error';
+        const errorStack = ocrError instanceof Error ? ocrError.stack : undefined;
+
+        console.error('[OCR Extract] 错误详情:', {
+          message: errorMessage,
+          stack: errorStack,
+          type: typeof ocrError,
+          fileName: file.name,
+          fileSize: file.size,
+          userId: user.sub,
+        });
+
         // 根据错误类型返回不同的错误信息
         if (ocrError instanceof Error) {
-          if (ocrError.message.includes('API key')) {
+          if (ocrError.message.includes('API key') || ocrError.message.includes('GOOGLE_API_KEY')) {
             return NextResponse.json(
-              createErrorResponse('OCR_API_KEY_ERROR', 'OCR服务配置错误'),
+              createErrorResponse('OCR_API_KEY_ERROR', 'OCR服务配置错误，请检查API密钥配置'),
               { status: 500 }
             );
           }
-          
+
           if (ocrError.message.includes('quota') || ocrError.message.includes('limit')) {
             return NextResponse.json(
-              createErrorResponse('OCR_QUOTA_EXCEEDED', 'OCR服务配额已用完'),
+              createErrorResponse('OCR_QUOTA_EXCEEDED', 'OCR服务配额已用完，请稍后重试'),
               { status: 429 }
+            );
+          }
+
+          if (ocrError.message.includes('timeout')) {
+            return NextResponse.json(
+              createErrorResponse('OCR_TIMEOUT_ERROR', 'OCR处理超时，请重试或使用更小的图片'),
+              { status: 408 }
             );
           }
         }
 
         return NextResponse.json(
-          createErrorResponse('OCR_PROCESSING_ERROR', 'OCR处理失败，请重试'),
+          createErrorResponse('OCR_PROCESSING_ERROR', 'OCR处理失败，请重试', {
+            details: errorMessage,
+            debug: process.env.NODE_ENV === 'development' ? {
+              stack: errorStack,
+              type: typeof ocrError,
+            } : undefined,
+          }),
           { status: 500 }
         );
       }
