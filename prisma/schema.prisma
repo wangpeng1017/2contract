@@ -1,0 +1,208 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL") // uses connection pooling
+  directUrl = env("POSTGRES_URL_NON_POOLING") // uses a direct connection
+}
+
+// 用户模型
+model User {
+  id            String   @id @default(cuid())
+  feishuUserId  String   @unique
+  name          String
+  email         String?
+  avatarUrl     String?
+  accessToken   String?  // 加密存储的访问令牌
+  refreshToken  String?  // 加密存储的刷新令牌
+  tokenExpiry   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 关联关系
+  operations    Operation[]
+  uploadedFiles UploadedFile[]
+  documents     Document[]
+
+  @@map("users")
+}
+
+// 文档模型
+model Document {
+  id          String   @id @default(cuid())
+  userId      String
+  feishuDocId String   // 飞书文档ID
+  title       String
+  url         String
+  lastAccess  DateTime @default(now())
+  permissions Json?    // 存储文档权限信息
+  metadata    Json?    // 存储文档元数据
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联关系
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operations Operation[]
+
+  @@unique([userId, feishuDocId])
+  @@map("documents")
+}
+
+// 操作记录模型
+model Operation {
+  id            String      @id @default(cuid())
+  userId        String
+  documentId    String?
+  operationType OperationType
+  status        OperationStatus @default(PENDING)
+  
+  // 输入数据
+  inputData     Json?       // 存储操作的输入参数
+  
+  // 输出数据
+  outputData    Json?       // 存储操作的结果
+  
+  // 错误信息
+  errorMessage  String?
+  errorCode     String?
+  
+  // 性能指标
+  startTime     DateTime    @default(now())
+  endTime       DateTime?
+  duration      Int?        // 执行时间（毫秒）
+  
+  // 元数据
+  userAgent     String?
+  ipAddress     String?
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // 关联关系
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document      Document?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  uploadedFiles UploadedFile[]
+
+  @@map("operations")
+}
+
+// 上传文件模型
+model UploadedFile {
+  id          String   @id @default(cuid())
+  userId      String
+  operationId String?
+  
+  // 文件信息
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int      // 文件大小（字节）
+  
+  // 存储信息
+  storageUrl  String   // Vercel Blob存储URL
+  storageKey  String   // 存储键值
+  
+  // OCR结果
+  ocrResult   Json?    // OCR识别结果
+  ocrStatus   String   @default("pending") // pending, processing, completed, failed
+  
+  // 元数据
+  metadata    Json?    // 额外的文件元数据
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime? // 软删除
+
+  // 关联关系
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operation   Operation? @relation(fields: [operationId], references: [id], onDelete: SetNull)
+
+  @@map("uploaded_files")
+}
+
+// 替换规则模型
+model ReplacementRule {
+  id           String   @id @default(cuid())
+  userId       String?  // null表示系统默认规则
+  
+  // 规则内容
+  name         String   // 规则名称
+  description  String?  // 规则描述
+  searchText   String   // 搜索文本
+  replaceText  String   // 替换文本
+  
+  // 规则选项
+  caseSensitive Boolean @default(false)
+  wholeWord     Boolean @default(false)
+  useRegex      Boolean @default(false)
+  priority      Int     @default(0)
+  
+  // 状态
+  isActive      Boolean @default(true)
+  isSystem      Boolean @default(false) // 是否为系统规则
+  
+  // 使用统计
+  usageCount    Int     @default(0)
+  lastUsed      DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("replacement_rules")
+}
+
+// 系统配置模型
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string") // string, number, boolean, json
+  category  String   @default("general")
+  description String?
+  isPublic  Boolean  @default(false) // 是否可以被前端访问
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_configs")
+}
+
+// 审计日志模型
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // 操作类型
+  resource  String   // 资源类型
+  resourceId String? // 资源ID
+  oldValue  Json?    // 操作前的值
+  newValue  Json?    // 操作后的值
+  metadata  Json?    // 额外的元数据
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// 枚举定义
+enum OperationType {
+  DOCUMENT_PARSE    // 文档解析
+  OCR_EXTRACT       // OCR提取
+  TEXT_REPLACE      // 文本替换
+  FILE_UPLOAD       // 文件上传
+  RULE_APPLY        // 规则应用
+  DOCUMENT_UPDATE   // 文档更新
+}
+
+enum OperationStatus {
+  PENDING     // 等待中
+  PROCESSING  // 处理中
+  COMPLETED   // 已完成
+  FAILED      // 失败
+  CANCELLED   // 已取消
+}

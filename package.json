@@ -20,6 +20,14 @@
     "auto-commit": "node scripts/auto-commit.js",
     "simple-commit": "node scripts/simple-commit.js",
     "commit-security-fix": "node scripts/commit-security-fix.js",
+    "fix-tailwind-build": "node scripts/fix-tailwind-build.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "node scripts/seed-database.js",
+    "db:setup": "node scripts/setup-database.js",
+    "commit-database": "node scripts/commit-database-implementation.js",
     "prepare": "node scripts/security-check-strict.js"
   },
   "dependencies": {
@@ -42,6 +50,8 @@
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.4.0",
     "crypto-js": "^4.2.0",
+    "@prisma/client": "^5.7.1",
+    "prisma": "^5.7.1",
     "@types/crypto-js": "^4.2.2",
     "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^2.0.18",
