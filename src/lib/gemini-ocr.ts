@@ -46,16 +46,25 @@ export class GeminiOCRService {
     this.maxRetries = 3;
     this.timeout = 30000;
 
+    // 在构建时允许缺少API Key
+    if (process.env.NODE_ENV === 'production' && typeof window === 'undefined' && !this.apiKey) {
+      console.warn('⚠️ Google API Key未配置，构建时跳过验证');
+      this.apiKey = 'build-time-placeholder';
+      return;
+    }
+
     if (!this.apiKey) {
       console.error('❌ Google API Key未配置。请检查环境变量GOOGLE_API_KEY');
       throw new Error('Google API Key is required for Gemini OCR service. Please check GOOGLE_API_KEY environment variable.');
     }
 
-    // 验证API密钥格式
-    const apiKeyPattern = /^AIza[0-9A-Za-z-_]{35}$/;
-    if (!apiKeyPattern.test(this.apiKey)) {
-      console.error('❌ Google API Key格式不正确');
-      throw new Error('Invalid Google API Key format. Please check your GOOGLE_API_KEY.');
+    // 验证API密钥格式（跳过占位符）
+    if (this.apiKey !== 'build-time-placeholder') {
+      const apiKeyPattern = /^AIza[0-9A-Za-z-_]{35}$/;
+      if (!apiKeyPattern.test(this.apiKey)) {
+        console.error('❌ Google API Key格式不正确');
+        throw new Error('Invalid Google API Key format. Please check your GOOGLE_API_KEY.');
+      }
     }
 
     console.log('✅ Gemini OCR服务初始化成功');
@@ -66,7 +75,12 @@ export class GeminiOCRService {
    */
   async extractText(imageData: string | File, options: OCROptions = {}): Promise<OCRResult> {
     const startTime = Date.now();
-    
+
+    // 运行时检查API Key
+    if (this.apiKey === 'build-time-placeholder' || !this.apiKey) {
+      throw new Error('Google API Key is not configured. Please set GOOGLE_API_KEY environment variable.');
+    }
+
     try {
       const base64Data = await this.prepareImageData(imageData);
       
@@ -432,6 +446,15 @@ export function createGeminiOCRService(apiKey?: string, model?: string): GeminiO
 }
 
 /**
- * 默认Gemini OCR服务实例
+ * 默认Gemini OCR服务实例（延迟初始化）
  */
-export const geminiOCR = createGeminiOCRService();
+let _geminiOCR: GeminiOCRService | null = null;
+
+export const geminiOCR = new Proxy({} as GeminiOCRService, {
+  get(target, prop) {
+    if (!_geminiOCR) {
+      _geminiOCR = createGeminiOCRService();
+    }
+    return (_geminiOCR as any)[prop];
+  }
+});
