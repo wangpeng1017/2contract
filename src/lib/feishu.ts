@@ -450,8 +450,18 @@ export function createFeishuClient(): FeishuClient {
   const appId = process.env.FEISHU_APP_ID;
   const appSecret = process.env.FEISHU_APP_SECRET;
 
+  console.log('[FeishuClient] Creating client with credentials check:', {
+    hasAppId: !!appId,
+    hasAppSecret: !!appSecret,
+    appIdLength: appId?.length || 0,
+    appSecretLength: appSecret?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    isServer: typeof window === 'undefined',
+  });
+
   // 在构建时允许缺少凭据，使用占位符
   if (process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
+    console.log('[FeishuClient] Using build-time placeholders');
     // 构建时使用占位符，避免构建失败
     return new FeishuClient(
       appId || 'build-time-placeholder',
@@ -461,9 +471,12 @@ export function createFeishuClient(): FeishuClient {
 
   // 运行时必须有真实凭据
   if (!appId || !appSecret) {
-    throw new Error('Missing Feishu app credentials');
+    const error = new Error(`Missing Feishu app credentials: appId=${!!appId}, appSecret=${!!appSecret}`);
+    console.error('[FeishuClient] Credential error:', error.message);
+    throw error;
   }
 
+  console.log('[FeishuClient] Creating client with valid credentials');
   return new FeishuClient(appId, appSecret);
 }
 

@@ -59,26 +59,46 @@ export function useAuth() {
    */
   const login = useCallback(async () => {
     try {
+      console.log('[Auth] Starting login process...');
       setState(prev => ({ ...prev, isLoading: true, error: null }));
-      
+
       const response = await axios.get('/api/auth/feishu');
-      
+      console.log('[Auth] Login response:', response.data);
+
       if (response.data.success) {
+        console.log('[Auth] Redirecting to Feishu OAuth...');
         // 重定向到飞书授权页面
         window.location.href = response.data.data.authUrl;
       } else {
+        console.error('[Auth] Login failed:', response.data.error);
+        const errorMessage = response.data.error?.details || response.data.error?.message || '登录失败';
         setState(prev => ({
           ...prev,
           isLoading: false,
-          error: response.data.error?.message || '登录失败',
+          error: errorMessage,
         }));
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('[Auth] Login error:', error);
+
+      // 提取更详细的错误信息
+      let errorMessage = '登录失败';
+      if (axios.isAxiosError(error)) {
+        if (error.response?.data?.error?.details) {
+          errorMessage = error.response.data.error.details;
+        } else if (error.response?.data?.error?.message) {
+          errorMessage = error.response.data.error.message;
+        } else if (error.response?.status === 500) {
+          errorMessage = '服务器配置错误，请联系管理员';
+        } else if (error.response?.status === 401) {
+          errorMessage = '认证失败，请重试';
+        }
+      }
+
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: '登录失败',
+        error: errorMessage,
       }));
     }
   }, []);
