@@ -2,8 +2,11 @@ import CryptoJS from 'crypto-js'
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
 
-if (!ENCRYPTION_KEY) {
+// 在构建时允许缺少加密密钥
+if (!ENCRYPTION_KEY && process.env.NODE_ENV !== 'production') {
   throw new Error('ENCRYPTION_KEY environment variable is required')
+} else if (!ENCRYPTION_KEY && process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
+  console.warn('⚠️ ENCRYPTION_KEY未配置，构建时使用默认密钥')
 }
 
 /**
@@ -11,6 +14,11 @@ if (!ENCRYPTION_KEY) {
  */
 export function encrypt(text: string): string {
   try {
+    // 运行时检查加密密钥
+    if (!ENCRYPTION_KEY && process.env.NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY environment variable is required for encryption in production');
+    }
+
     const key = ENCRYPTION_KEY || 'default-encryption-key-for-development';
     const encrypted = CryptoJS.AES.encrypt(text, key).toString()
     return encrypted
@@ -25,14 +33,19 @@ export function encrypt(text: string): string {
  */
 export function decrypt(encryptedText: string): string {
   try {
+    // 运行时检查加密密钥
+    if (!ENCRYPTION_KEY && process.env.NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY environment variable is required for decryption in production');
+    }
+
     const key = ENCRYPTION_KEY || 'default-encryption-key-for-development';
     const bytes = CryptoJS.AES.decrypt(encryptedText, key)
     const decrypted = bytes.toString(CryptoJS.enc.Utf8)
-    
+
     if (!decrypted) {
       throw new Error('解密结果为空')
     }
-    
+
     return decrypted
   } catch (error) {
     console.error('解密失败:', error)
