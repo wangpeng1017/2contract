@@ -450,6 +450,16 @@ export function createFeishuClient(): FeishuClient {
   const appId = process.env.FEISHU_APP_ID;
   const appSecret = process.env.FEISHU_APP_SECRET;
 
+  // 在构建时允许缺少凭据，使用占位符
+  if (process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
+    // 构建时使用占位符，避免构建失败
+    return new FeishuClient(
+      appId || 'build-time-placeholder',
+      appSecret || 'build-time-placeholder'
+    );
+  }
+
+  // 运行时必须有真实凭据
   if (!appId || !appSecret) {
     throw new Error('Missing Feishu app credentials');
   }
@@ -458,6 +468,15 @@ export function createFeishuClient(): FeishuClient {
 }
 
 /**
- * 默认飞书客户端实例
+ * 默认飞书客户端实例（延迟初始化）
  */
-export const feishuClient = createFeishuClient();
+let _feishuClient: FeishuClient | null = null;
+
+export const feishuClient = new Proxy({} as FeishuClient, {
+  get(target, prop) {
+    if (!_feishuClient) {
+      _feishuClient = createFeishuClient();
+    }
+    return (_feishuClient as any)[prop];
+  }
+});

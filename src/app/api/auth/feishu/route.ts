@@ -7,6 +7,15 @@ import { generateRandomString } from '@/lib/utils';
  */
 export async function GET(request: NextRequest) {
   try {
+    // 检查环境变量
+    if (!process.env.FEISHU_APP_ID || !process.env.FEISHU_APP_SECRET) {
+      console.error('Missing Feishu app credentials in runtime');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const redirectUri = process.env.FEISHU_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`;
     
