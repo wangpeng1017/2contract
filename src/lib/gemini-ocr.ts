@@ -362,7 +362,7 @@ export class GeminiOCRService {
     Object.entries(patterns).forEach(([key, pattern]) => {
       const match = text.match(pattern);
       if (match) {
-        info[key as keyof ContractInfo] = match[1].trim();
+        (info as any)[key] = match[1].trim();
       }
     });
     

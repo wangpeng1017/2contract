@@ -1,23 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { documentService } from '@/lib/document-service';
-import { withAuth } from '@/lib/auth-middleware';
+import { withDocumentWritePermission } from '@/lib/document-auth-middleware';
 import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
 
 /**
  * 替换文档中的文本
  */
 export async function POST(request: NextRequest) {
-  return withAuth(request, async (req, user) => {
+  return withDocumentWritePermission(request, async (req, user, documentId) => {
     try {
       const body = await req.json();
-      const { documentId, replacements, options = {} } = body;
-
-      if (!documentId) {
-        return NextResponse.json(
-          createErrorResponse('MISSING_DOCUMENT_ID', '缺少文档ID'),
-          { status: 400 }
-        );
-      }
+      const { replacements, options = {} } = body;
 
       if (!replacements || !Array.isArray(replacements) || replacements.length === 0) {
         return NextResponse.json(

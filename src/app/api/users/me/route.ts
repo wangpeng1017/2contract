@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { UserService } from '@/lib/services/user.service'
-import { verifyToken } from '@/lib/auth'
+import { verifyToken } from '@/lib/auth-middleware'
 
 export async function GET(request: NextRequest) {
   try {

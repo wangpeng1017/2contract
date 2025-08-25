@@ -331,6 +331,87 @@ export class FeishuClient {
   }
 
   /**
+   * 检查用户对文档的权限
+   */
+  async checkDocumentPermission(
+    documentId: string,
+    accessToken: string,
+    permission: 'read' | 'write' | 'comment' = 'read'
+  ): Promise<{
+    hasPermission: boolean;
+    permissions: string[];
+    error?: string;
+  }> {
+    try {
+      const response = await this.client.get(
+        `/docx/v1/documents/${documentId}/permission`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (response.data.code !== 0) {
+        // 如果权限API不可用，尝试通过获取文档信息来判断
+        try {
+          await this.getDocument(documentId, accessToken);
+          return {
+            hasPermission: true,
+            permissions: ['read'], // 至少有读权限
+          };
+        } catch (docError) {
+          return {
+            hasPermission: false,
+            permissions: [],
+            error: '无权访问该文档',
+          };
+        }
+      }
+
+      const permissions = response.data.data?.permissions || [];
+      const hasRequiredPermission = this.validatePermission(permissions, permission);
+
+      return {
+        hasPermission: hasRequiredPermission,
+        permissions,
+      };
+    } catch (error) {
+      console.error('Error checking document permission:', error);
+
+      // 如果权限检查失败，尝试通过文档访问来判断基本权限
+      try {
+        await this.getDocument(documentId, accessToken);
+        return {
+          hasPermission: permission === 'read',
+          permissions: ['read'],
+        };
+      } catch (docError) {
+        return {
+          hasPermission: false,
+          permissions: [],
+          error: '无权访问该文档或文档不存在',
+        };
+      }
+    }
+  }
+
+  /**
+   * 验证权限级别
+   */
+  private validatePermission(permissions: string[], requiredPermission: string): boolean {
+    const permissionHierarchy = {
+      read: ['read', 'comment', 'write', 'manage'],
+      comment: ['comment', 'write', 'manage'],
+      write: ['write', 'manage'],
+      manage: ['manage'],
+    };
+
+    const validPermissions = permissionHierarchy[requiredPermission as keyof typeof permissionHierarchy] || [];
+    return permissions.some(p => validPermissions.includes(p));
+  }
+
+  /**
    * 删除文档块
    */
   async deleteDocumentBlocks(

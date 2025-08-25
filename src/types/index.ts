@@ -59,6 +59,114 @@ export interface DocumentContent {
   blocks: DocumentBlock[];
 }
 
+// 文档权限相关类型
+export interface DocumentPermissions {
+  canRead: boolean;
+  canWrite: boolean;
+  canComment: boolean;
+  canManage: boolean;
+}
+
+export interface DocumentPermissionCheck {
+  documentId: string;
+  hasPermission: boolean;
+  permissions: string[];
+  document?: FeishuDocument;
+  error?: string;
+  errorCode?: string;
+}
+
+export interface DocumentActionCheck {
+  documentId: string;
+  action: string;
+  canPerform: boolean;
+  error?: string;
+  errorCode?: string;
+}
+
+// 文档结构化解析相关类型
+export interface ParsedBlock {
+  id: string;
+  type: string;
+  content: string;
+  level: number;
+  parent?: string;
+  children: ParsedBlock[];
+  metadata: {
+    style?: any;
+    attributes?: Record<string, any>;
+    position: {
+      start: number;
+      end: number;
+    };
+  };
+}
+
+export interface TableStructure {
+  id: string;
+  rows: number;
+  columns: number;
+  headers: string[];
+  data: string[][];
+  metadata: {
+    hasHeader: boolean;
+    cellStyles?: any[][];
+  };
+}
+
+export interface ListStructure {
+  id: string;
+  type: 'bullet' | 'ordered';
+  items: Array<{
+    id: string;
+    content: string;
+    level: number;
+    children: ListStructure[];
+  }>;
+}
+
+export interface DocumentStructure {
+  document: FeishuDocument;
+  blocks: ParsedBlock[];
+  outline: Array<{
+    id: string;
+    level: number;
+    title: string;
+    children: any[];
+  }>;
+  tables: TableStructure[];
+  lists: ListStructure[];
+  images: Array<{
+    id: string;
+    url?: string;
+    alt?: string;
+    caption?: string;
+  }>;
+  statistics: {
+    totalBlocks: number;
+    textBlocks: number;
+    headings: number;
+    tables: number;
+    lists: number;
+    images: number;
+    wordCount: number;
+    characterCount: number;
+  };
+}
+
+export interface DocumentSearchResult {
+  blockId: string;
+  blockType: string;
+  content: string;
+  matches: Array<{
+    start: number;
+    end: number;
+    text: string;
+    context: string;
+  }>;
+  path: string[];
+}
+
 // 文本替换相关类型
 export interface ReplaceRule {
   id: string;

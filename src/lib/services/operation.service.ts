@@ -314,10 +314,10 @@ export class OperationService {
   static async retryOperation(id: string): Promise<Operation> {
     return await this.updateOperation(id, {
       status: OperationStatus.PENDING,
-      errorMessage: null,
-      errorCode: null,
-      endTime: null,
-      duration: null,
+      errorMessage: undefined,
+      errorCode: undefined,
+      endTime: undefined,
+      duration: undefined,
     })
   }
 }

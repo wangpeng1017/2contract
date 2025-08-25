@@ -421,7 +421,7 @@ export class ReplaceValidator {
    * 查找重复模式
    */
   private static findRepeatedPatterns(text: string): string[] {
-    const patterns = [];
+    const patterns: string[] = [];
     const minPatternLength = 10;
     const maxPatternLength = 50;
 

@@ -141,6 +141,34 @@ export function hasPermission(user: any, permission: string): boolean {
 }
 
 /**
+ * 验证访问令牌并返回用户信息
+ */
+export async function verifyToken(request: NextRequest): Promise<any | null> {
+  try {
+    const accessToken = request.cookies.get('access_token')?.value;
+
+    if (!accessToken) {
+      return null;
+    }
+
+    // 验证访问令牌
+    const isValid = await feishuClient.validateAccessToken(accessToken);
+
+    if (!isValid) {
+      return null;
+    }
+
+    // 获取用户信息
+    const userInfo = await feishuClient.getUserInfo(accessToken);
+
+    return userInfo;
+  } catch (error) {
+    console.error('Token verification error:', error);
+    return null;
+  }
+}
+
+/**
  * 权限检查中间件
  */
 export async function withPermission(

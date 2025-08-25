@@ -1,24 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { documentService } from '@/lib/document-service';
-import { withAuth } from '@/lib/auth-middleware';
+import { withDocumentReadPermission } from '@/lib/document-auth-middleware';
 import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
 
 /**
  * 获取文档内容
  */
 export async function GET(request: NextRequest) {
-  return withAuth(request, async (req, user) => {
+  return withDocumentReadPermission(request, async (req, user, documentId) => {
     try {
-      const { searchParams } = new URL(req.url);
-      const documentId = searchParams.get('documentId');
-
-      if (!documentId) {
-        return NextResponse.json(
-          createErrorResponse('MISSING_DOCUMENT_ID', '缺少文档ID'),
-          { status: 400 }
-        );
-      }
-
       // 获取访问令牌
       const accessToken = req.cookies.get('access_token')?.value;
       if (!accessToken) {

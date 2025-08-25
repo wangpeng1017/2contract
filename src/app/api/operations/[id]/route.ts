@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { OperationService } from '@/lib/services/operation.service'
-import { verifyToken } from '@/lib/auth'
+import { verifyToken } from '@/lib/auth-middleware'
 import { OperationStatus } from '@prisma/client'
 
 interface RouteParams {

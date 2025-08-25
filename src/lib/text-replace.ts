@@ -152,9 +152,9 @@ export class TextReplaceEngine {
       result.totalReplacements = totalReplacements;
       result.success = result.errors.length === 0;
     } catch (error) {
-      result.error = error instanceof Error ? error.message : '批量替换过程中发生未知错误';
+      const errorMessage = error instanceof Error ? error.message : '批量替换过程中发生未知错误';
       result.success = false;
-      result.errors.push(result.error);
+      result.errors.push(errorMessage);
     }
 
     result.executionTime = Date.now() - startTime;

@@ -256,7 +256,7 @@ export function RuleEditor({ onNext }: RuleEditorProps) {
           <div className="text-center py-8 text-gray-500">
             <Edit3 className="w-12 h-12 mx-auto mb-4 text-gray-300" />
             <p>暂无替换规则</p>
-            <p className="text-sm">点击"添加规则"开始配置</p>
+            <p className="text-sm">点击&quot;添加规则&quot;开始配置</p>
           </div>
         ) : (
           rules.map((rule) => (

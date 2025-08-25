@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
  * 生成预览详情
  */
 function generatePreviewDetails(originalText: string, replaceResult: any, rules: ReplaceRule[]) {
-  const changes = [];
+  const changes: any[] = [];
   const statistics = {
     totalCharacters: originalText.length,
     finalCharacters: replaceResult.finalText.length,

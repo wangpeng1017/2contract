@@ -11,7 +11,8 @@ if (!ENCRYPTION_KEY) {
  */
 export function encrypt(text: string): string {
   try {
-    const encrypted = CryptoJS.AES.encrypt(text, ENCRYPTION_KEY).toString()
+    const key = ENCRYPTION_KEY || 'default-encryption-key-for-development';
+    const encrypted = CryptoJS.AES.encrypt(text, key).toString()
     return encrypted
   } catch (error) {
     console.error('加密失败:', error)
@@ -24,7 +25,8 @@ export function encrypt(text: string): string {
  */
 export function decrypt(encryptedText: string): string {
   try {
-    const bytes = CryptoJS.AES.decrypt(encryptedText, ENCRYPTION_KEY)
+    const key = ENCRYPTION_KEY || 'default-encryption-key-for-development';
+    const bytes = CryptoJS.AES.decrypt(encryptedText, key)
     const decrypted = bytes.toString(CryptoJS.enc.Utf8)
     
     if (!decrypted) {

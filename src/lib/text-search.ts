@@ -41,8 +41,8 @@ export class TextSearchEngine {
     } = options;
 
     const matches: SearchMatch[] = [];
-    let searchText = caseSensitive ? text : text.toLowerCase();
-    let searchPattern = caseSensitive ? pattern : pattern.toLowerCase();
+    const searchText = caseSensitive ? text : text.toLowerCase();
+    const searchPattern = caseSensitive ? pattern : pattern.toLowerCase();
 
     if (wholeWord) {
       // 使用正则表达式进行全词匹配
