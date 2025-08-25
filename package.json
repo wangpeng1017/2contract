@@ -13,6 +13,12 @@
     "pre-commit": "node scripts/security-check.js --pre-commit",
     "test-ocr": "node scripts/test-ocr.js",
     "validate-setup": "node scripts/validate-setup.js",
+    "validate-env": "node scripts/validate-env-complete.js",
+    "git-commit": "node scripts/git-commit.js",
+    "git-commit-execute": "node scripts/execute-git-commit.js",
+    "pre-commit-check": "node scripts/pre-commit-check.js",
+    "auto-commit": "node scripts/auto-commit.js",
+    "simple-commit": "node scripts/simple-commit.js",
     "prepare": "node scripts/security-check.js --full"
   },
   "dependencies": {
