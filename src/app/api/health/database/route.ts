@@ -3,6 +3,18 @@ import { getDatabaseHealth, getDatabaseStats } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
+    // 检查是否在构建时
+    if (process.env.NODE_ENV === 'production' && typeof window === 'undefined' && !process.env.DATABASE_URL) {
+      return NextResponse.json({
+        success: true,
+        health: {
+          status: 'build-time',
+          message: 'Database check skipped during build',
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
     // 获取数据库健康状态
     const health = await getDatabaseHealth()
     

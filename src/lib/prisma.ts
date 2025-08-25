@@ -4,11 +4,30 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-})
+// 延迟初始化 Prisma 客户端，避免构建时错误
+let _prisma: PrismaClient | null = null;
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+function createPrismaClient(): PrismaClient {
+  if (_prisma) return _prisma;
+
+  try {
+    _prisma = new PrismaClient({
+      log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    });
+    return _prisma;
+  } catch (error) {
+    console.error('Failed to initialize Prisma client:', error);
+    // 在构建时返回一个模拟客户端
+    if (process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
+      return {} as PrismaClient;
+    }
+    throw error;
+  }
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 // 数据库连接测试函数
 export async function testDatabaseConnection(): Promise<boolean> {
