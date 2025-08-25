@@ -19,7 +19,8 @@
     "pre-commit-check": "node scripts/pre-commit-check.js",
     "auto-commit": "node scripts/auto-commit.js",
     "simple-commit": "node scripts/simple-commit.js",
-    "prepare": "node scripts/security-check.js --full"
+    "commit-security-fix": "node scripts/commit-security-fix.js",
+    "prepare": "node scripts/security-check-strict.js"
   },
   "dependencies": {
     "next": "14.2.5",

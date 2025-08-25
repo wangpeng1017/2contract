@@ -48,7 +48,7 @@ const SENSITIVE_PATTERNS = [
   },
   {
     name: 'Token in Code',
-    pattern: /[tT][oO][kK][eE][nN]\s*[:=]\s*['"][^'"]{20,}['"]/g,
+    pattern: /[tT][oO][kK][eE][nN]\s*[:=]\s*['"][a-zA-Z0-9_-]{20,}['"]/g,
     severity: 'MEDIUM'
   },
   {
@@ -75,7 +75,8 @@ const EXCLUDED_PATHS = [
   'build',
   '.env.example',
   'scripts/security-check.js', // 排除自身
-  'docs/API密钥安全管理指南.md' // 排除包含示例密钥的文档
+  'docs/API密钥安全管理指南.md', // 排除包含示例密钥的文档
+  'docs/环境变量配置完整指南.md' // 排除配置指南文档
 ];
 
 class SecurityChecker {

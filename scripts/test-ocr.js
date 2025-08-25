@@ -21,7 +21,7 @@ async function testGeminiOCR() {
   }
 
   const envContent = fs.readFileSync(envPath, 'utf8');
-  const hasGoogleApiKey = envContent.includes('GOOGLE_API_KEY=AIzaSyBtw7WLw0Lf749k0j5yeKJpjz1AfWgDsuA');
+  const hasGoogleApiKey = envContent.includes('GOOGLE_API_KEY=') && envContent.includes('AIza');
   
   if (hasGoogleApiKey) {
     console.log('✅ Google API Key 已正确配置');
@@ -33,7 +33,7 @@ async function testGeminiOCR() {
   // 2. 检查API密钥格式
   console.log('\n2️⃣ 验证API密钥格式');
   const apiKeyPattern = /^AIza[0-9A-Za-z-_]{35}$/;
-  const apiKey = 'AIzaSyBtw7WLw0Lf749k0j5yeKJpjz1AfWgDsuA';
+  const apiKey = process.env.GOOGLE_API_KEY;
   
   if (apiKeyPattern.test(apiKey)) {
     console.log('✅ API密钥格式正确');
