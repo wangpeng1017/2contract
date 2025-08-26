@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创建测试图片</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .contract-table {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .title {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        .section-title {
+            font-weight: bold;
+            margin: 20px 0 10px 0;
+        }
+        .amount-box {
+            border: 1px solid #333;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .car-info {
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="contract-table" id="contract">
+        <div class="section-title">2. 甲、乙双方信息：</div>
+        
+        <table>
+            <tr>
+                <th>甲方</th>
+                <td>天津美数百宝汽车销售有限公司</td>
+                <th>联系人</th>
+                <td>许庆东</td>
+            </tr>
+            <tr>
+                <th>电话</th>
+                <td>13911081213</td>
+                <th>邮编</th>
+                <td></td>
+            </tr>
+            <tr>
+                <th>乙方</th>
+                <td>广州能源科技有限公司</td>
+                <th>联系人</th>
+                <td>张兴亮</td>
+            </tr>
+            <tr>
+                <th>电话</th>
+                <td>18380250208</td>
+                <th>邮编</th>
+                <td></td>
+            </tr>
+        </table>
+
+        <div class="section-title">一、车型和价格、数量及合同金额</div>
+        
+        <table>
+            <tr>
+                <th>车型</th>
+                <th>配置</th>
+                <th>颜色（外观）</th>
+                <th>数量</th>
+                <th>单价</th>
+                <th>总额（人民币）</th>
+            </tr>
+            <tr>
+                <td>驱逐舰 05</td>
+                <td>55KM 豪华版</td>
+                <td>雪域白</td>
+                <td>2台</td>
+                <td>66300</td>
+                <td>132600</td>
+            </tr>
+        </table>
+
+        <div class="amount-box">
+            <div>不含税价：￥117345.13元　税额：￥15254.86元</div>
+            <br>
+            <div>车款合计人民币：￥132600元　　大写金额：壹拾叁万贰仟陆佰元整。</div>
+        </div>
+
+        <div class="car-info">
+            <div class="section-title">车架号：</div>
+            <div>LC0C76C4XS0356071</div>
+            <div>LC0C76C44S0358043</div>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <button onclick="downloadAsImage()">下载为图片</button>
+        <button onclick="copyToClipboard()">复制为图片</button>
+    </div>
+
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script>
+        async function downloadAsImage() {
+            const element = document.getElementById('contract');
+            const canvas = await html2canvas(element, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                useCORS: true
+            });
+            
+            const link = document.createElement('a');
+            link.download = 'contract-test-image.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        async function copyToClipboard() {
+            const element = document.getElementById('contract');
+            const canvas = await html2canvas(element, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                useCORS: true
+            });
+            
+            canvas.toBlob(async (blob) => {
+                try {
+                    await navigator.clipboard.write([
+                        new ClipboardItem({ 'image/png': blob })
+                    ]);
+                    alert('图片已复制到剪贴板！');
+                } catch (err) {
+                    console.error('复制失败:', err);
+                    alert('复制失败，请使用下载功能');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

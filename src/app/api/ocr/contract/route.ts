@@ -8,7 +8,19 @@ import { createSuccessResponse, createErrorResponse, generateRandomString } from
  * 合同信息提取并生成替换规则
  */
 export async function POST(request: NextRequest) {
+  // 检查是否为测试模式（开发环境允许无认证测试）
+  const isTestMode = process.env.NODE_ENV === 'development';
+
+  if (isTestMode) {
+    return handleContractOCRRequest(request, { sub: 'test-user' });
+  }
+
   return withAuth(request, async (req, user) => {
+    return handleContractOCRRequest(req, user);
+  });
+}
+
+async function handleContractOCRRequest(req: NextRequest, user: any) {
     try {
       const formData = await req.formData();
       const file = formData.get('image') as File;
@@ -71,7 +83,9 @@ export async function POST(request: NextRequest) {
         }
 
         // 记录使用情况
-        await recordContractExtractionUsage(user.sub, file.size, contractInfo);
+        if (user.sub !== 'test-user') {
+          await recordContractExtractionUsage(user.sub, file.size, contractInfo);
+        }
 
         return NextResponse.json(
           createSuccessResponse({
@@ -106,7 +120,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  });
 }
 
 /**

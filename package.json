@@ -48,9 +48,11 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^2.30.0",
     "dotenv": "^17.2.1",
+    "form-data": "^4.0.4",
     "immer": "^10.0.3",
     "lucide-react": "^0.408.0",
     "next": "14.2.5",
+    "node-fetch": "^3.3.2",
     "playwright": "^1.55.0",
     "postcss": "^8.4.38",
     "prisma": "^5.22.0",
@@ -66,7 +68,7 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.16.1",
     "@typescript-eslint/parser": "^7.16.1",
-    "eslint": "^8",
+    "eslint": "^8.57.1",
     "eslint-config-next": "14.2.5",
     "prettier": "^3.3.2",
     "prettier-plugin-tailwindcss": "^0.6.5"

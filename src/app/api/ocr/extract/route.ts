@@ -7,7 +7,19 @@ import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
  * OCR文字识别和信息提取
  */
 export async function POST(request: NextRequest) {
+  // 检查是否为测试模式（开发环境允许无认证测试）
+  const isTestMode = process.env.NODE_ENV === 'development';
+
+  if (isTestMode) {
+    return handleOCRRequest(request, { sub: 'test-user' });
+  }
+
   return withAuth(request, async (req, user) => {
+    return handleOCRRequest(req, user);
+  });
+}
+
+async function handleOCRRequest(req: NextRequest, user: any) {
     try {
       console.log('[OCR Extract] 开始处理OCR请求...');
 
@@ -81,7 +93,9 @@ export async function POST(request: NextRequest) {
         });
 
         // 记录使用情况（用于成本控制）
-        await recordOCRUsage(user.sub, file.size, result.processingTime);
+        if (user.sub !== 'test-user') {
+          await recordOCRUsage(user.sub, file.size, result.processingTime);
+        }
 
         return NextResponse.json(
           createSuccessResponse({
@@ -161,7 +175,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  });
 }
 
 /**

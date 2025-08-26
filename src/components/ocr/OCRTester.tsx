@@ -25,6 +25,9 @@ export function OCRTester() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
     const file = event.target.files?.[0];
     if (file) {
       // 验证文件类型
@@ -41,6 +44,11 @@ export function OCRTester() {
 
       setSelectedFile(file);
       setTestResult(null);
+    }
+
+    // 清空input值，允许重复选择同一文件
+    if (event.target) {
+      event.target.value = '';
     }
   };
 
@@ -165,7 +173,11 @@ export function OCRTester() {
             className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              fileInputRef.current?.click();
+            }}
           >
             <input
               ref={fileInputRef}

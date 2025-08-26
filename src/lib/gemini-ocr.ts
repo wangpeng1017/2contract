@@ -187,18 +187,17 @@ export class GeminiOCRService {
       // 如果已经是base64字符串，直接返回
       return imageData.replace(/^data:image\/[a-z]+;base64,/, '');
     }
-    
+
     // 如果是File对象，转换为base64
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(imageData);
-    });
+    // 在服务器端，File对象实际上是一个包含arrayBuffer方法的对象
+    try {
+      const arrayBuffer = await imageData.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return buffer.toString('base64');
+    } catch (error) {
+      console.error('Error converting file to base64:', error);
+      throw new Error('Failed to convert file to base64');
+    }
   }
 
   /**
