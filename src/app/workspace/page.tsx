@@ -10,13 +10,18 @@ import { useAppStore } from '@/store/useAppStore';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
 
 export default function WorkspacePage() {
-  const { 
-    currentStep, 
-    setCurrentStep, 
+  const {
+    currentStep,
+    setCurrentStep,
     resetWorkflow,
     document,
     ocrResult,
-    rules
+    rules,
+    replaceResult,
+    isLoading,
+    error,
+    executeReplace,
+    updateStepStatus
   } = useAppStore();
 
   // 自动推进工作流
@@ -29,6 +34,14 @@ export default function WorkspacePage() {
       setCurrentStep(2);
     }
   }, [document, ocrResult, currentStep, setCurrentStep]);
+
+  // 执行替换操作
+  useEffect(() => {
+    if (currentStep === 4 && !replaceResult && !isLoading && !error) {
+      // 自动执行替换操作
+      executeReplace();
+    }
+  }, [currentStep, replaceResult, isLoading, error, executeReplace]);
 
   const handlePreviousStep = () => {
     if (currentStep > 0) {
@@ -129,15 +142,96 @@ export default function WorkspacePage() {
         return (
           <div className="bg-white rounded-lg shadow-sm border p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">执行替换</h2>
-            <p className="text-gray-600 mb-6">
-              正在执行文本替换操作...
-            </p>
-            
-            {/* 这里将来会添加实际的替换执行逻辑 */}
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <p className="text-gray-600">正在处理中，请稍候...</p>
-            </div>
+
+            {isLoading && (
+              <div>
+                <p className="text-gray-600 mb-6">
+                  正在执行文本替换操作...
+                </p>
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                  <p className="text-gray-600">正在处理中，请稍候...</p>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-red-900 mb-2">替换失败</h3>
+                <p className="text-red-700 mb-4">{error}</p>
+                <div className="flex justify-center space-x-4">
+                  <button
+                    onClick={() => executeReplace()}
+                    className="btn-primary"
+                  >
+                    重试
+                  </button>
+                  <button
+                    onClick={() => setCurrentStep(3)}
+                    className="btn-secondary"
+                  >
+                    返回预览
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {replaceResult && (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-green-900 mb-2">替换完成</h3>
+                <p className="text-green-700 mb-6">
+                  成功替换了 {replaceResult.totalReplacements} 处文本，
+                  共找到 {replaceResult.totalMatches} 个匹配项
+                </p>
+
+                {/* 替换结果详情 */}
+                <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
+                  <h4 className="font-medium text-gray-900 mb-3">替换详情</h4>
+                  <div className="space-y-2">
+                    {replaceResult.results.map((result, index) => (
+                      <div key={index} className="flex items-center justify-between text-sm">
+                        <span className="font-mono bg-red-100 text-red-800 px-2 py-1 rounded">
+                          {result.searchText}
+                        </span>
+                        <span className="text-gray-500">→</span>
+                        <span className="font-mono bg-green-100 text-green-800 px-2 py-1 rounded">
+                          {result.replaceText}
+                        </span>
+                        <span className="text-gray-600">
+                          {result.replacedCount} 处
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-center space-x-4">
+                  <button
+                    onClick={resetWorkflow}
+                    className="btn-primary"
+                  >
+                    开始新的替换
+                  </button>
+                  <button
+                    onClick={() => window.open(document?.url, '_blank')}
+                    className="btn-secondary"
+                    disabled={!document?.url}
+                  >
+                    查看文档
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       

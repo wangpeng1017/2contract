@@ -26,6 +26,22 @@ export interface OCRResult {
   structuredData?: any;
 }
 
+export interface ReplaceResult {
+  success: boolean;
+  totalReplacements: number;
+  totalMatches: number;
+  results: Array<{
+    ruleId: string;
+    searchText: string;
+    replaceText: string;
+    replacedCount: number;
+    success: boolean;
+    error?: string;
+  }>;
+  error?: string;
+  executionTime: number;
+}
+
 export interface WorkflowStep {
   id: string;
   title: string;
@@ -38,20 +54,23 @@ interface AppState {
   // 工作流状态
   currentStep: number;
   steps: WorkflowStep[];
-  
+
   // 文档信息
   document: DocumentInfo | null;
-  
+
   // 替换规则
   rules: ReplaceRule[];
-  
+
   // OCR结果
   ocrResult: OCRResult | null;
-  
+
+  // 替换结果
+  replaceResult: ReplaceResult | null;
+
   // UI状态
   isLoading: boolean;
   error: string | null;
-  
+
   // 操作历史
   operationHistory: Array<{
     id: string;
@@ -83,7 +102,12 @@ interface AppActions {
   // OCR结果
   setOCRResult: (result: OCRResult) => void;
   clearOCRResult: () => void;
-  
+
+  // 替换结果
+  setReplaceResult: (result: ReplaceResult) => void;
+  clearReplaceResult: () => void;
+  executeReplace: () => Promise<void>;
+
   // UI状态
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -134,6 +158,7 @@ export const useAppStore = create<AppState & AppActions>()(
     document: null,
     rules: [],
     ocrResult: null,
+    replaceResult: null,
     isLoading: false,
     error: null,
     operationHistory: [],
@@ -169,6 +194,7 @@ export const useAppStore = create<AppState & AppActions>()(
       state.document = null;
       state.rules = [];
       state.ocrResult = null;
+      state.replaceResult = null;
       state.error = null;
     }),
 
@@ -227,6 +253,107 @@ export const useAppStore = create<AppState & AppActions>()(
     clearOCRResult: () => set((state) => {
       state.ocrResult = null;
     }),
+
+    // 替换结果
+    setReplaceResult: (result) => set((state) => {
+      state.replaceResult = result;
+    }),
+
+    clearReplaceResult: () => set((state) => {
+      state.replaceResult = null;
+    }),
+
+    executeReplace: async () => {
+      const state = get();
+
+      if (!state.document?.id) {
+        set((state) => {
+          state.error = '缺少文档信息';
+          state.updateStepStatus('apply_changes', 'error', '缺少文档信息');
+        });
+        return;
+      }
+
+      const enabledRules = state.rules.filter(rule => rule.enabled);
+      if (enabledRules.length === 0) {
+        set((state) => {
+          state.error = '没有启用的替换规则';
+          state.updateStepStatus('apply_changes', 'error', '没有启用的替换规则');
+        });
+        return;
+      }
+
+      set((state) => {
+        state.isLoading = true;
+        state.error = null;
+        state.updateStepStatus('apply_changes', 'active');
+      });
+
+      try {
+        const response = await fetch('/api/text/replace', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            documentId: state.document.id,
+            rules: enabledRules.map(rule => ({
+              id: rule.id,
+              searchText: rule.searchText,
+              replaceText: rule.replaceText,
+              options: {
+                enabled: rule.enabled,
+                caseSensitive: rule.caseSensitive,
+                wholeWord: rule.wholeWord,
+                priority: rule.priority
+              }
+            })),
+            options: {
+              dryRun: false,
+              stopOnError: false
+            }
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          const replaceResult: ReplaceResult = {
+            success: true,
+            totalReplacements: data.data.replaceResult.totalReplacements,
+            totalMatches: data.data.replaceResult.totalMatches,
+            results: data.data.replaceResult.results,
+            executionTime: data.data.replaceResult.executionTime
+          };
+
+          set((state) => {
+            state.replaceResult = replaceResult;
+            state.isLoading = false;
+            state.updateStepStatus('apply_changes', 'completed');
+            state.addToHistory({
+              type: 'text_replace',
+              status: 'success',
+              details: replaceResult
+            });
+          });
+        } else {
+          throw new Error(data.error?.message || '替换操作失败');
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '替换操作失败';
+
+        set((state) => {
+          state.error = errorMessage;
+          state.isLoading = false;
+          state.updateStepStatus('apply_changes', 'error', errorMessage);
+          state.addToHistory({
+            type: 'text_replace',
+            status: 'error',
+            details: { error: errorMessage }
+          });
+        });
+      }
+    },
 
     // UI状态
     setLoading: (loading) => set((state) => {
