@@ -137,13 +137,18 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json(
-          createErrorResponse('OCR_PROCESSING_ERROR', 'OCR处理失败，请重试', {
-            details: errorMessage,
-            debug: process.env.NODE_ENV === 'development' ? {
-              stack: errorStack,
-              type: typeof ocrError,
-            } : undefined,
-          }),
+          {
+            success: false,
+            error: {
+              code: 'OCR_PROCESSING_ERROR',
+              message: 'OCR处理失败，请重试',
+              details: errorMessage,
+              debug: process.env.NODE_ENV === 'development' ? {
+                stack: errorStack,
+                type: typeof ocrError,
+              } : undefined,
+            },
+          },
           { status: 500 }
         );
       }
