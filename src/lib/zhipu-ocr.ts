@@ -332,59 +332,82 @@ export class ZhipuOCRService {
    * 优化合同数据，确保返回最佳的单一结果
    */
   private optimizeContractData(contractData: any): any {
-    const optimized = { ...contractData };
+    try {
+      console.log('[ZhipuOCR] 开始优化合同数据:', JSON.stringify(contractData, null, 2));
 
-    // 优化甲方乙方信息
-    if (optimized.parties) {
-      // 确保甲方乙方信息的唯一性和准确性
-      if (optimized.parties.partyA && Array.isArray(optimized.parties.partyA)) {
-        optimized.parties.partyA = this.selectBestPartyName(optimized.parties.partyA);
+      const optimized = { ...contractData };
+
+      // 优化甲方乙方信息
+      if (optimized.parties) {
+        console.log('[ZhipuOCR] 优化当事方信息:', optimized.parties);
+
+        // 确保甲方乙方信息的唯一性和准确性
+        if (optimized.parties.partyA && Array.isArray(optimized.parties.partyA)) {
+          optimized.parties.partyA = this.selectBestPartyName(optimized.parties.partyA);
+        }
+        if (optimized.parties.partyB && Array.isArray(optimized.parties.partyB)) {
+          optimized.parties.partyB = this.selectBestPartyName(optimized.parties.partyB);
+        }
       }
-      if (optimized.parties.partyB && Array.isArray(optimized.parties.partyB)) {
-        optimized.parties.partyB = this.selectBestPartyName(optimized.parties.partyB);
+
+      // 优化金额信息 - 选择最重要的金额
+      if (optimized.amounts && Array.isArray(optimized.amounts)) {
+        console.log('[ZhipuOCR] 优化金额信息:', optimized.amounts);
+        optimized.amounts = this.selectBestAmounts(optimized.amounts);
       }
-    }
 
-    // 优化金额信息 - 选择最重要的金额
-    if (optimized.amounts && Array.isArray(optimized.amounts)) {
-      optimized.amounts = this.selectBestAmounts(optimized.amounts);
-    }
+      // 优化日期信息 - 选择最重要的日期
+      if (optimized.dates && Array.isArray(optimized.dates)) {
+        console.log('[ZhipuOCR] 优化日期信息:', optimized.dates);
+        optimized.dates = this.selectBestDates(optimized.dates);
+      }
 
-    // 优化日期信息 - 选择最重要的日期
-    if (optimized.dates && Array.isArray(optimized.dates)) {
-      optimized.dates = this.selectBestDates(optimized.dates);
-    }
+      // 优化关键条款 - 选择最重要的条款
+      if (optimized.keyTerms && Array.isArray(optimized.keyTerms)) {
+        console.log('[ZhipuOCR] 优化关键条款:', optimized.keyTerms);
+        optimized.keyTerms = this.selectBestKeyTerms(optimized.keyTerms);
+      }
 
-    // 优化关键条款 - 选择最重要的条款
-    if (optimized.keyTerms && Array.isArray(optimized.keyTerms)) {
-      optimized.keyTerms = this.selectBestKeyTerms(optimized.keyTerms);
-    }
+      console.log('[ZhipuOCR] 合同数据优化完成:', JSON.stringify(optimized, null, 2));
+      return optimized;
 
-    return optimized;
+    } catch (error) {
+      console.error('[ZhipuOCR] 优化合同数据失败:', error);
+      console.error('[ZhipuOCR] 原始数据:', JSON.stringify(contractData, null, 2));
+
+      // 返回原始数据，避免完全失败
+      return contractData;
+    }
   }
 
   /**
    * 选择最佳的当事方名称
    */
-  private selectBestPartyName(names: string[]): string {
+  private selectBestPartyName(names: any[]): string {
     if (!names || names.length === 0) return '';
-    if (names.length === 1) return names[0];
+
+    // 过滤并转换为字符串
+    const validNames = names
+      .filter(name => name && typeof name === 'string' && name.trim().length > 0)
+      .map(name => String(name).trim());
+
+    if (validNames.length === 0) return '';
+    if (validNames.length === 1) return validNames[0];
 
     // 选择最长且最完整的名称
-    return names
-      .filter(name => name && name.trim().length > 0)
-      .sort((a, b) => b.length - a.length)[0] || names[0];
+    return validNames.sort((a, b) => b.length - a.length)[0];
   }
 
   /**
    * 选择最佳的金额信息
    */
-  private selectBestAmounts(amounts: string[]): string[] {
+  private selectBestAmounts(amounts: any[]): string[] {
     if (!amounts || amounts.length === 0) return [];
 
     // 过滤和排序金额，优先选择包含"合同"、"总"等关键词的金额
     const filteredAmounts = amounts
-      .filter(amount => amount && amount.trim().length > 0)
+      .filter(amount => amount && typeof amount === 'string' && amount.trim().length > 0)
+      .map(amount => String(amount)) // 确保是字符串类型
       .sort((a, b) => {
         // 优先级评分
         let scoreA = 0, scoreB = 0;
@@ -404,12 +427,13 @@ export class ZhipuOCRService {
   /**
    * 选择最佳的日期信息
    */
-  private selectBestDates(dates: string[]): string[] {
+  private selectBestDates(dates: any[]): string[] {
     if (!dates || dates.length === 0) return [];
 
     // 过滤和排序日期，优先选择签署日期
     const filteredDates = dates
-      .filter(date => date && date.trim().length > 0)
+      .filter(date => date && typeof date === 'string' && date.trim().length > 0)
+      .map(date => String(date)) // 确保是字符串类型
       .sort((a, b) => {
         // 优先级评分
         let scoreA = 0, scoreB = 0;
@@ -429,12 +453,13 @@ export class ZhipuOCRService {
   /**
    * 选择最佳的关键条款
    */
-  private selectBestKeyTerms(keyTerms: string[]): string[] {
+  private selectBestKeyTerms(keyTerms: any[]): string[] {
     if (!keyTerms || keyTerms.length === 0) return [];
 
     // 过滤和排序关键条款，优先选择重要的条款
     const filteredTerms = keyTerms
-      .filter(term => term && term.trim().length > 0)
+      .filter(term => term && typeof term === 'string' && term.trim().length > 0)
+      .map(term => String(term)) // 确保是字符串类型
       .filter(term => term.length > 5) // 过滤过短的条款
       .sort((a, b) => {
         // 优先级评分
