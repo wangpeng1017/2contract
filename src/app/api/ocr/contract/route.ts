@@ -69,19 +69,23 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
 
         // 如果需要生成替换规则
         if (generateRules && contractInfo) {
-          replacementRules = generateReplacementRules(contractInfo);
-          
+          const accessToken = req.cookies.get('access_token')?.value;
+
+          // 生成智能值替换规则
+          replacementRules = await generateSmartReplacementRules(
+            contractInfo,
+            documentId,
+            accessToken
+          );
+
           // 如果提供了文档ID，生成预览
-          if (documentId && replacementRules.length > 0) {
+          if (documentId && replacementRules.length > 0 && accessToken) {
             try {
-              const accessToken = req.cookies.get('access_token')?.value;
-              if (accessToken) {
-                previewResult = await generateReplacementPreview(
-                  documentId, 
-                  replacementRules, 
-                  accessToken
-                );
-              }
+              previewResult = await generateReplacementPreview(
+                documentId,
+                replacementRules,
+                accessToken
+              );
             } catch (previewError) {
               console.warn('Failed to generate preview:', previewError);
               // 预览失败不影响主要功能
@@ -130,11 +134,101 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
 }
 
 /**
- * 生成替换规则
+ * 生成智能值替换规则
  */
-function generateReplacementRules(contractInfo: ContractInfo): ReplaceRule[] {
+async function generateSmartReplacementRules(
+  contractInfo: ContractInfo,
+  documentId?: string,
+  accessToken?: string
+): Promise<ReplaceRule[]> {
   const rules: ReplaceRule[] = [];
-  
+
+  // 如果有文档信息，使用智能值替换
+  if (documentId && accessToken) {
+    try {
+      const { documentService } = await import('@/lib/document-service');
+      const documentContent = await documentService.getDocumentContent(documentId, accessToken);
+      const originalText = documentService.extractAllText(documentContent.blocks);
+
+      console.log('[Contract OCR] 使用智能值替换模式');
+      return generateValueReplacementRules(contractInfo, originalText);
+    } catch (error) {
+      console.warn('[Contract OCR] 智能值替换失败，使用传统模式:', error);
+    }
+  }
+
+  // 回退到传统的模式替换
+  console.log('[Contract OCR] 使用传统模式替换');
+  return generatePatternReplacementRules(contractInfo);
+}
+
+/**
+ * 生成值对值的替换规则（智能模式）
+ */
+function generateValueReplacementRules(contractInfo: ContractInfo, originalText: string): ReplaceRule[] {
+  const rules: ReplaceRule[] = [];
+
+  // 定义字段映射
+  const fieldMappings = [
+    {
+      key: '甲方',
+      ocrValue: contractInfo.parties.partyA,
+      patterns: ['甲方', '第一方', '采购方', '委托方', '发包方']
+    },
+    {
+      key: '乙方',
+      ocrValue: contractInfo.parties.partyB,
+      patterns: ['乙方', '第二方', '供应方', '受托方', '承包方']
+    },
+    {
+      key: '合同金额',
+      ocrValue: contractInfo.amounts[0],
+      patterns: ['金额', '价格', '费用', '总价', '合同价']
+    },
+    {
+      key: '签署日期',
+      ocrValue: contractInfo.dates[0],
+      patterns: ['日期', '签署', '签订', '生效']
+    }
+  ];
+
+  fieldMappings.forEach(mapping => {
+    if (mapping.ocrValue && mapping.ocrValue.trim()) {
+      // 提取OCR识别的纯净值
+      const pureOcrValue = extractPureValue(mapping.ocrValue, mapping.key);
+
+      if (pureOcrValue) {
+        // 在原文档中查找对应的值
+        const originalValue = findValueInDocument(originalText, mapping.patterns, pureOcrValue);
+
+        if (originalValue && originalValue !== pureOcrValue) {
+          rules.push({
+            id: `${mapping.key}_value_${generateRandomString(8)}`,
+            searchText: originalValue,
+            replaceText: pureOcrValue,
+            options: {
+              caseSensitive: false,
+              wholeWord: true, // 使用整词匹配确保精确替换
+              enabled: true,
+              priority: 0
+            }
+          });
+
+          console.log(`[Smart Replace] ${mapping.key}: "${originalValue}" → "${pureOcrValue}"`);
+        }
+      }
+    }
+  });
+
+  return rules;
+}
+
+/**
+ * 生成传统的模式替换规则（兼容模式）
+ */
+function generatePatternReplacementRules(contractInfo: ContractInfo): ReplaceRule[] {
+  const rules: ReplaceRule[] = [];
+
   // 定义字段映射和搜索模式
   const fieldMappings = [
     {
@@ -195,6 +289,185 @@ function generateReplacementRules(contractInfo: ContractInfo): ReplaceRule[] {
   });
 
   return rules;
+}
+
+/**
+ * 从OCR结果中提取纯净的字段值
+ */
+function extractPureValue(ocrValue: string, fieldKey: string): string {
+  if (!ocrValue || !ocrValue.trim()) return '';
+
+  // 定义常见的标签前缀模式
+  const labelPatterns = [
+    /^甲方[：:\s]*(.+)$/,
+    /^乙方[：:\s]*(.+)$/,
+    /^第一方[：:\s]*(.+)$/,
+    /^第二方[：:\s]*(.+)$/,
+    /^采购方[：:\s]*(.+)$/,
+    /^供应方[：:\s]*(.+)$/,
+    /^委托方[：:\s]*(.+)$/,
+    /^受托方[：:\s]*(.+)$/,
+    /^发包方[：:\s]*(.+)$/,
+    /^承包方[：:\s]*(.+)$/,
+    /^合同金额[：:\s]*(.+)$/,
+    /^总金额[：:\s]*(.+)$/,
+    /^金额[：:\s]*(.+)$/,
+    /^价格[：:\s]*(.+)$/,
+    /^费用[：:\s]*(.+)$/,
+    /^签署日期[：:\s]*(.+)$/,
+    /^签订日期[：:\s]*(.+)$/,
+    /^生效日期[：:\s]*(.+)$/,
+    /^日期[：:\s]*(.+)$/,
+    /^合同编号[：:\s]*(.+)$/,
+    /^协议编号[：:\s]*(.+)$/,
+    /^编号[：:\s]*(.+)$/,
+    /^联系人[：:\s]*(.+)$/,
+    /^负责人[：:\s]*(.+)$/,
+    /^联系电话[：:\s]*(.+)$/,
+    /^电话[：:\s]*(.+)$/,
+    /^手机[：:\s]*(.+)$/
+  ];
+
+  // 尝试匹配并提取值
+  for (const pattern of labelPatterns) {
+    const match = ocrValue.match(pattern);
+    if (match && match[1]) {
+      const extractedValue = match[1].trim();
+      console.log(`[Value Extract] ${fieldKey}: "${ocrValue}" → "${extractedValue}"`);
+      return extractedValue;
+    }
+  }
+
+  // 如果没有匹配到标签模式，返回原值（可能已经是纯净值）
+  const cleanValue = ocrValue.trim();
+  console.log(`[Value Extract] ${fieldKey}: 使用原值 "${cleanValue}"`);
+  return cleanValue;
+}
+
+/**
+ * 在原文档中查找对应的字段值
+ */
+function findValueInDocument(originalText: string, patterns: string[], ocrValue: string): string | null {
+  if (!originalText || !ocrValue) return null;
+
+  // 为每个模式创建正则表达式来查找值
+  for (const pattern of patterns) {
+    // 创建匹配模式，查找标签后的值
+    const regexPatterns = [
+      new RegExp(`${pattern}[（(]?[^）)]*[）)]?[：:\\s]*([^\\n\\r，,。.；;]+)`, 'gi'),
+      new RegExp(`${pattern}[：:\\s]*([^\\n\\r，,。.；;]+)`, 'gi'),
+      new RegExp(`[^\\n\\r]*${pattern}[^\\n\\r]*[：:\\s]*([^\\n\\r，,。.；;]+)`, 'gi')
+    ];
+
+    for (const regex of regexPatterns) {
+      const matches = Array.from(originalText.matchAll(regex));
+
+      for (const match of matches) {
+        if (match[1]) {
+          const foundValue = match[1].trim();
+
+          // 过滤掉明显不是目标值的结果
+          if (foundValue.length > 2 &&
+              foundValue !== ocrValue &&
+              !foundValue.includes('：') &&
+              !foundValue.includes(':') &&
+              foundValue.length < 100) { // 避免匹配到过长的文本
+
+            console.log(`[Value Find] 在原文档中找到 "${pattern}" 对应的值: "${foundValue}"`);
+            return foundValue;
+          }
+        }
+      }
+    }
+  }
+
+  // 如果没有找到，尝试模糊匹配
+  return findValueByFuzzyMatch(originalText, ocrValue);
+}
+
+/**
+ * 使用模糊匹配在文档中查找相似的值
+ */
+function findValueByFuzzyMatch(originalText: string, ocrValue: string): string | null {
+  if (!originalText || !ocrValue || ocrValue.length < 3) return null;
+
+  // 提取文档中所有可能的公司名称、金额、日期等
+  const valuePatterns = [
+    // 公司名称模式
+    /([^\s\n\r]{2,}(?:公司|企业|集团|有限责任公司|股份有限公司|合作社|工厂|店|中心|机构))/g,
+    // 金额模式
+    /([\d,]+(?:\.\d{2})?(?:元|万元|千元|¥|￥|\$))/g,
+    // 日期模式
+    /(\d{4}[年\-\/]\d{1,2}[月\-\/]\d{1,2}[日]?)/g,
+    // 编号模式
+    /([A-Z0-9\-]{6,})/g
+  ];
+
+  for (const pattern of valuePatterns) {
+    const matches = Array.from(originalText.matchAll(pattern));
+
+    for (const match of matches) {
+      const foundValue = match[1].trim();
+
+      // 计算相似度
+      const similarity = calculateSimilarity(foundValue, ocrValue);
+
+      // 如果相似度较高但不完全相同，认为是匹配的
+      if (similarity > 0.3 && similarity < 1.0 && foundValue !== ocrValue) {
+        console.log(`[Fuzzy Match] 找到相似值: "${foundValue}" (相似度: ${similarity.toFixed(2)})`);
+        return foundValue;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 计算两个字符串的相似度
+ */
+function calculateSimilarity(str1: string, str2: string): number {
+  if (!str1 || !str2) return 0;
+  if (str1 === str2) return 1;
+
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+
+  if (longer.length === 0) return 1;
+
+  const editDistance = getEditDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+/**
+ * 计算编辑距离
+ */
+function getEditDistance(str1: string, str2: string): number {
+  const matrix = [];
+
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+
+  return matrix[str2.length][str1.length];
 }
 
 /**
