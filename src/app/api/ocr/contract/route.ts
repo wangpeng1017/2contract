@@ -176,29 +176,17 @@ function generateReplacementRules(contractInfo: ContractInfo): ReplaceRule[] {
 
   fieldMappings.forEach(mapping => {
     if (mapping.value && mapping.value.trim()) {
-      // 为每个字段生成多个可能的搜索模式
-      mapping.searchPatterns.forEach((pattern, index) => {
-        rules.push({
-          id: `${mapping.key}_${index}_${generateRandomString(8)}`,
-          searchText: pattern,
-          replaceText: `${pattern}${mapping.value}`,
-          options: {
-            caseSensitive: false,
-            wholeWord: false,
-            enabled: true,
-            priority: index // 第一个模式优先级最高
-          }
-        });
-      });
+      // 只为每个字段生成一条最佳的替换规则
+      // 选择第一个搜索模式作为最佳模式
+      const bestPattern = mapping.searchPatterns[0];
 
-      // 添加一个通用的值替换规则
       rules.push({
-        id: `${mapping.key}_value_${generateRandomString(8)}`,
-        searchText: `[${mapping.key}]`,
-        replaceText: mapping.value,
+        id: `${mapping.key}_${generateRandomString(8)}`,
+        searchText: bestPattern,
+        replaceText: `${bestPattern}${mapping.value}`,
         options: {
           caseSensitive: false,
-          wholeWord: true,
+          wholeWord: false,
           enabled: true,
           priority: 0
         }

@@ -132,25 +132,27 @@ export class ZhipuOCRService {
       }
 
       // 构建合同识别的专用提示词
-      const prompt = `请仔细分析这份合同图片，提取以下关键信息并以JSON格式返回：
+      const prompt = `请仔细分析这份合同图片，提取关键信息并以JSON格式返回。请只返回一个最准确的结果，不要提供多个候选选项。
 
+返回格式：
 {
   "parties": {
-    "partyA": "甲方名称",
-    "partyB": "乙方名称"
+    "partyA": "甲方完整名称",
+    "partyB": "乙方完整名称"
   },
-  "amounts": ["金额1", "金额2"],
-  "dates": ["日期1", "日期2"],
-  "keyTerms": ["关键条款1", "关键条款2"],
+  "amounts": ["主要金额"],
+  "dates": ["主要日期"],
+  "keyTerms": ["最重要的条款"],
   "fullText": "完整的合同文本内容"
 }
 
-要求：
-1. 准确识别甲方、乙方信息
-2. 提取所有涉及的金额数字
-3. 识别重要日期（签署日期、生效日期等）
-4. 提取关键条款和重要条件
-5. 保持原始文本的完整性和格式`;
+识别要求：
+1. 准确识别甲方、乙方的完整名称
+2. 提取最重要的金额信息（优先合同总金额）
+3. 识别最重要的日期（优先签署日期）
+4. 提取最关键的条款信息
+5. 确保信息的准确性和唯一性
+6. 只返回最有把握的信息，避免重复或模糊的内容`;
 
       const response = await this.callZhipuAPI(prompt, imageData, mimeType);
       const contractInfo = this.parseContractResponse(response);
@@ -280,12 +282,12 @@ export class ZhipuOCRService {
   }
 
   /**
-   * 解析合同响应
+   * 解析合同响应 - 确保返回单一最佳结果
    */
   private parseContractResponse(response: any): ContractInfo {
     try {
       const text = this.extractTextFromResponse(response);
-      
+
       // 尝试解析JSON格式的响应
       let contractData;
       try {
@@ -302,12 +304,15 @@ export class ZhipuOCRService {
         contractData = this.parseContractFromText(text);
       }
 
+      // 确保返回的数据是单一最佳结果
+      const optimizedData = this.optimizeContractData(contractData);
+
       return {
-        parties: contractData.parties || {},
-        amounts: Array.isArray(contractData.amounts) ? contractData.amounts : [],
-        dates: Array.isArray(contractData.dates) ? contractData.dates : [],
-        keyTerms: Array.isArray(contractData.keyTerms) ? contractData.keyTerms : [],
-        fullText: contractData.fullText || text
+        parties: optimizedData.parties || {},
+        amounts: Array.isArray(optimizedData.amounts) ? optimizedData.amounts.slice(0, 1) : [], // 只取第一个金额
+        dates: Array.isArray(optimizedData.dates) ? optimizedData.dates.slice(0, 1) : [], // 只取第一个日期
+        keyTerms: Array.isArray(optimizedData.keyTerms) ? optimizedData.keyTerms.slice(0, 3) : [], // 最多3个关键条款
+        fullText: optimizedData.fullText || text
       };
 
     } catch (error) {
@@ -321,6 +326,135 @@ export class ZhipuOCRService {
         fullText: text
       };
     }
+  }
+
+  /**
+   * 优化合同数据，确保返回最佳的单一结果
+   */
+  private optimizeContractData(contractData: any): any {
+    const optimized = { ...contractData };
+
+    // 优化甲方乙方信息
+    if (optimized.parties) {
+      // 确保甲方乙方信息的唯一性和准确性
+      if (optimized.parties.partyA && Array.isArray(optimized.parties.partyA)) {
+        optimized.parties.partyA = this.selectBestPartyName(optimized.parties.partyA);
+      }
+      if (optimized.parties.partyB && Array.isArray(optimized.parties.partyB)) {
+        optimized.parties.partyB = this.selectBestPartyName(optimized.parties.partyB);
+      }
+    }
+
+    // 优化金额信息 - 选择最重要的金额
+    if (optimized.amounts && Array.isArray(optimized.amounts)) {
+      optimized.amounts = this.selectBestAmounts(optimized.amounts);
+    }
+
+    // 优化日期信息 - 选择最重要的日期
+    if (optimized.dates && Array.isArray(optimized.dates)) {
+      optimized.dates = this.selectBestDates(optimized.dates);
+    }
+
+    // 优化关键条款 - 选择最重要的条款
+    if (optimized.keyTerms && Array.isArray(optimized.keyTerms)) {
+      optimized.keyTerms = this.selectBestKeyTerms(optimized.keyTerms);
+    }
+
+    return optimized;
+  }
+
+  /**
+   * 选择最佳的当事方名称
+   */
+  private selectBestPartyName(names: string[]): string {
+    if (!names || names.length === 0) return '';
+    if (names.length === 1) return names[0];
+
+    // 选择最长且最完整的名称
+    return names
+      .filter(name => name && name.trim().length > 0)
+      .sort((a, b) => b.length - a.length)[0] || names[0];
+  }
+
+  /**
+   * 选择最佳的金额信息
+   */
+  private selectBestAmounts(amounts: string[]): string[] {
+    if (!amounts || amounts.length === 0) return [];
+
+    // 过滤和排序金额，优先选择包含"合同"、"总"等关键词的金额
+    const filteredAmounts = amounts
+      .filter(amount => amount && amount.trim().length > 0)
+      .sort((a, b) => {
+        // 优先级评分
+        let scoreA = 0, scoreB = 0;
+
+        if (a.includes('合同') || a.includes('总')) scoreA += 10;
+        if (b.includes('合同') || b.includes('总')) scoreB += 10;
+
+        if (a.includes('¥') || a.includes('元')) scoreA += 5;
+        if (b.includes('¥') || b.includes('元')) scoreB += 5;
+
+        return scoreB - scoreA;
+      });
+
+    return filteredAmounts.slice(0, 1); // 只返回最佳的一个金额
+  }
+
+  /**
+   * 选择最佳的日期信息
+   */
+  private selectBestDates(dates: string[]): string[] {
+    if (!dates || dates.length === 0) return [];
+
+    // 过滤和排序日期，优先选择签署日期
+    const filteredDates = dates
+      .filter(date => date && date.trim().length > 0)
+      .sort((a, b) => {
+        // 优先级评分
+        let scoreA = 0, scoreB = 0;
+
+        if (a.includes('签署') || a.includes('签订')) scoreA += 10;
+        if (b.includes('签署') || b.includes('签订')) scoreB += 10;
+
+        if (a.includes('生效')) scoreA += 5;
+        if (b.includes('生效')) scoreB += 5;
+
+        return scoreB - scoreA;
+      });
+
+    return filteredDates.slice(0, 1); // 只返回最佳的一个日期
+  }
+
+  /**
+   * 选择最佳的关键条款
+   */
+  private selectBestKeyTerms(keyTerms: string[]): string[] {
+    if (!keyTerms || keyTerms.length === 0) return [];
+
+    // 过滤和排序关键条款，优先选择重要的条款
+    const filteredTerms = keyTerms
+      .filter(term => term && term.trim().length > 0)
+      .filter(term => term.length > 5) // 过滤过短的条款
+      .sort((a, b) => {
+        // 优先级评分
+        let scoreA = 0, scoreB = 0;
+
+        // 重要关键词加分
+        const importantKeywords = ['责任', '义务', '权利', '违约', '赔偿', '期限', '条件'];
+        importantKeywords.forEach(keyword => {
+          if (a.includes(keyword)) scoreA += 5;
+          if (b.includes(keyword)) scoreB += 5;
+        });
+
+        // 长度适中的条款优先
+        if (a.length > 10 && a.length < 100) scoreA += 3;
+        if (b.length > 10 && b.length < 100) scoreB += 3;
+
+        return scoreB - scoreA;
+      });
+
+    return filteredTerms.slice(0, 3); // 最多返回3个最重要的条款
   }
 
   /**
