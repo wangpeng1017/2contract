@@ -347,16 +347,37 @@ export class GeminiOCRService {
   }
 
   /**
-   * 从响应中提取文本
+   * 从响应中提取文本 - 自动选择最佳候选结果
    */
   private extractTextFromResponse(response: any): string {
     try {
-      const candidate = response.candidates[0];
-      if (!candidate || !candidate.content || !candidate.content.parts) {
-        throw new Error('Invalid response format');
+      if (!response.candidates || response.candidates.length === 0) {
+        throw new Error('No candidates in response');
       }
-      
-      return candidate.content.parts
+
+      // 如果只有一个候选结果，直接使用
+      if (response.candidates.length === 1) {
+        const candidate = response.candidates[0];
+        if (!candidate || !candidate.content || !candidate.content.parts) {
+          throw new Error('Invalid candidate format');
+        }
+
+        return candidate.content.parts
+          .filter((part: any) => part.text)
+          .map((part: any) => part.text)
+          .join('\n');
+      }
+
+      // 如果有多个候选结果，自动选择最佳的一个
+      console.log(`[GeminiOCR] 发现 ${response.candidates.length} 个候选结果，自动选择最佳结果`);
+
+      const bestCandidate = this.selectBestCandidate(response.candidates);
+
+      if (!bestCandidate || !bestCandidate.content || !bestCandidate.content.parts) {
+        throw new Error('No valid candidate found');
+      }
+
+      return bestCandidate.content.parts
         .filter((part: any) => part.text)
         .map((part: any) => part.text)
         .join('\n');
@@ -364,6 +385,82 @@ export class GeminiOCRService {
       console.error('Error extracting text from response:', error);
       throw new Error('Failed to extract text from API response');
     }
+  }
+
+  /**
+   * 从多个候选结果中选择最佳的一个
+   */
+  private selectBestCandidate(candidates: any[]): any {
+    // 过滤出有效的候选结果
+    const validCandidates = candidates.filter(candidate =>
+      candidate &&
+      candidate.content &&
+      candidate.content.parts &&
+      candidate.content.parts.some((part: any) => part.text && part.text.trim().length > 0)
+    );
+
+    if (validCandidates.length === 0) {
+      return null;
+    }
+
+    if (validCandidates.length === 1) {
+      return validCandidates[0];
+    }
+
+    // 评分标准：
+    // 1. finishReason 为 'STOP' 的优先级最高
+    // 2. 文本长度适中的优先级较高
+    // 3. 包含更多结构化信息的优先级较高
+
+    const scoredCandidates = validCandidates.map(candidate => {
+      let score = 0;
+
+      // 完成状态评分
+      if (candidate.finishReason === 'STOP') {
+        score += 100;
+      } else if (candidate.finishReason === 'MAX_TOKENS') {
+        score += 50;
+      }
+
+      // 文本质量评分
+      const text = candidate.content.parts
+        .filter((part: any) => part.text)
+        .map((part: any) => part.text)
+        .join('\n');
+
+      const textLength = text.length;
+
+      // 文本长度评分（避免过短或过长）
+      if (textLength > 50 && textLength < 5000) {
+        score += 50;
+      } else if (textLength >= 5000) {
+        score += 30;
+      } else if (textLength >= 20) {
+        score += 20;
+      }
+
+      // 结构化内容评分
+      if (text.includes('{') && text.includes('}')) {
+        score += 20; // 包含JSON结构
+      }
+      if (text.includes('甲方') || text.includes('乙方')) {
+        score += 15; // 包含合同关键词
+      }
+      if (text.includes('金额') || text.includes('价格') || text.includes('¥')) {
+        score += 10; // 包含金额信息
+      }
+
+      return { candidate, score, textLength };
+    });
+
+    // 按评分排序，选择最高分的候选结果
+    scoredCandidates.sort((a, b) => b.score - a.score);
+
+    const bestCandidate = scoredCandidates[0];
+
+    console.log(`[GeminiOCR] 最佳候选结果评分: ${bestCandidate.score}, 文本长度: ${bestCandidate.textLength}`);
+
+    return bestCandidate.candidate;
   }
 
   /**
@@ -413,18 +510,90 @@ export class GeminiOCRService {
   }
 
   /**
-   * 计算置信度
+   * 计算置信度 - 基于最佳候选结果
    */
   private calculateConfidence(response: any): number {
     try {
-      const candidate = response.candidates[0];
-      if (candidate && candidate.finishReason === 'STOP') {
-        return 0.9; // 正常完成，高置信度
+      if (!response.candidates || response.candidates.length === 0) {
+        return 0.1;
       }
-      return 0.7; // 其他情况，中等置信度
+
+      // 如果只有一个候选结果
+      if (response.candidates.length === 1) {
+        const candidate = response.candidates[0];
+        return this.calculateCandidateConfidence(candidate);
+      }
+
+      // 如果有多个候选结果，基于最佳候选结果计算置信度
+      const bestCandidate = this.selectBestCandidate(response.candidates);
+      if (!bestCandidate) {
+        return 0.2;
+      }
+
+      // 多候选结果的置信度会稍微提高，因为有多个选择
+      const baseConfidence = this.calculateCandidateConfidence(bestCandidate);
+      const candidateCount = response.candidates.length;
+
+      // 候选结果越多，置信度稍微提高（最多提高0.1）
+      const bonusConfidence = Math.min(0.1, candidateCount * 0.02);
+
+      return Math.min(0.95, baseConfidence + bonusConfidence);
     } catch (error) {
-      return 0.5; // 错误情况，低置信度
+      console.error('Error calculating confidence:', error);
+      return 0.3;
     }
+  }
+
+  /**
+   * 计算单个候选结果的置信度
+   */
+  private calculateCandidateConfidence(candidate: any): number {
+    if (!candidate) {
+      return 0.1;
+    }
+
+    let confidence = 0.5; // 基础置信度
+
+    // 完成状态评分
+    if (candidate.finishReason === 'STOP') {
+      confidence += 0.3; // 正常完成
+    } else if (candidate.finishReason === 'MAX_TOKENS') {
+      confidence += 0.1; // 达到最大token限制
+    } else {
+      confidence -= 0.1; // 其他异常情况
+    }
+
+    // 内容质量评分
+    if (candidate.content && candidate.content.parts) {
+      const text = candidate.content.parts
+        .filter((part: any) => part.text)
+        .map((part: any) => part.text)
+        .join('\n');
+
+      const textLength = text.length;
+
+      // 文本长度评分
+      if (textLength > 100) {
+        confidence += 0.1;
+      }
+      if (textLength > 500) {
+        confidence += 0.05;
+      }
+
+      // 内容结构评分
+      if (text.includes('{') && text.includes('}')) {
+        confidence += 0.05; // 包含结构化数据
+      }
+
+      // 中文内容评分
+      const chineseCharCount = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+      if (chineseCharCount > 10) {
+        confidence += 0.05;
+      }
+    }
+
+    // 确保置信度在合理范围内
+    return Math.max(0.1, Math.min(0.95, confidence));
   }
 
   /**

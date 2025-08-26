@@ -173,11 +173,6 @@ export function OCRTester() {
             className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}
           >
             <input
               ref={fileInputRef}
@@ -200,9 +195,20 @@ export function OCRTester() {
             ) : (
               <div>
                 <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">
-                  点击选择图片或拖拽图片到此处
+                <p className="text-gray-600 mb-4">
+                  拖拽图片到此处或点击下方按钮选择文件
                 </p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  选择图片文件
+                </button>
                 <p className="text-sm text-gray-500 mt-2">
                   支持 JPEG、PNG、GIF、WebP 格式，最大 10MB
                 </p>

@@ -165,7 +165,6 @@ export function ImageUpload({ onOCRComplete, onNext }: ImageUploadProps) {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => fileInputRef.current?.click()}
         >
           <input
             ref={fileInputRef}

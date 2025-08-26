@@ -1,0 +1,66 @@
+{
+  "startTime": "2025-08-25T08:26:30.485Z",
+  "tests": [
+    {
+      "name": "页面加载测试",
+      "status": "passed",
+      "timestamp": "2025-08-25T08:26:36.182Z",
+      "duration": 2289,
+      "title": "飞书合同内容更新助手",
+      "url": "https://0823-3contract.vercel.app"
+    },
+    {
+      "name": "UI组件检查",
+      "status": "passed",
+      "timestamp": "2025-08-25T08:26:41.433Z",
+      "duration": 5250,
+      "foundComponents": 4,
+      "totalComponents": 5
+    },
+    {
+      "name": "飞书登录按钮测试",
+      "status": "passed",
+      "timestamp": "2025-08-25T08:26:44.823Z",
+      "duration": 3389,
+      "currentUrl": "https://0823-3contract.vercel.app/",
+      "action": "登录按钮可点击"
+    },
+    {
+      "name": "API端点健康检查",
+      "status": "warning",
+      "timestamp": "2025-08-25T08:26:45.900Z",
+      "duration": 1076,
+      "results": [
+        {
+          "endpoint": "/api/health/database",
+          "status": 503,
+          "responseTime": 497,
+          "success": false
+        },
+        {
+          "endpoint": "/api/auth/me",
+          "status": 401,
+          "responseTime": 818,
+          "success": true
+        },
+        {
+          "endpoint": "/api/operations",
+          "status": 401,
+          "responseTime": 1076,
+          "success": true
+        }
+      ],
+      "successfulEndpoints": 2,
+      "totalEndpoints": 3,
+      "error": "只有 2/3 个端点正常"
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "passed": 3,
+    "failed": 0,
+    "warnings": 0,
+    "warning": null
+  },
+  "endTime": "2025-08-25T08:26:46.441Z"
+}
