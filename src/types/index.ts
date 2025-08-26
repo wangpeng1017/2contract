@@ -172,8 +172,17 @@ export interface ReplaceRule {
   id: string;
   searchText: string;
   replaceText: string;
+  fieldType?: string; // 字段类型标注，如"甲方公司"、"乙方公司"等
   caseSensitive?: boolean;
   wholeWord?: boolean;
+  enabled?: boolean;
+  priority?: number;
+  options?: {
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    enabled?: boolean;
+    priority?: number;
+  };
 }
 
 export interface ReplaceResult {

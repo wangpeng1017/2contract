@@ -4,6 +4,7 @@ export interface ReplaceRule {
   id: string;
   searchText: string;
   replaceText: string;
+  fieldType?: string; // 字段类型标注，如"甲方公司"、"乙方公司"等
   options?: SearchOptions & {
     enabled?: boolean;
     priority?: number;
