@@ -36,7 +36,7 @@
 ### 当前配置的密钥
 ```bash
 # Google Gemini Vision API
-GOOGLE_API_KEY=AIzaSyBtw7WLw0Lf749k0j5yeKJpjz1AfWgDsuA
+GOOGLE_API_KEY=AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GEMINI_MODEL=gemini-1.5-flash
 ```
 

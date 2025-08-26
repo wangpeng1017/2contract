@@ -127,7 +127,7 @@ function generateFixRecommendations(envOk, apiOk) {
     console.log('2. 选择项目 "0823-3contract"');
     console.log('3. 进入 Settings → Environment Variables');
     console.log('4. 添加以下环境变量:');
-    console.log('   GOOGLE_API_KEY=AIzaSyBtw7WLw0Lf749k0j5yeKJpjz1AfWgDsuA');
+    console.log('   GOOGLE_API_KEY=AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
     console.log('   GEMINI_MODEL=gemini-1.5-flash');
     console.log('5. 重新部署应用');
     console.log('');
