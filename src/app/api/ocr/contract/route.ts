@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
-import { geminiOCR, ContractInfo } from '@/lib/gemini-ocr';
+import { zhipuOCR, ContractInfo } from '@/lib/zhipu-ocr';
 import { TextReplaceEngine, ReplaceRule } from '@/lib/text-replace';
 import { createSuccessResponse, createErrorResponse, generateRandomString } from '@/lib/utils';
 
@@ -51,11 +51,18 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
       }
 
       try {
-        // 提取合同信息
-        const contractInfo = await geminiOCR.extractContractInfo(file, {
-          maxRetries: 2,
-          timeout: 30000
-        });
+        // 将文件转换为base64
+        const arrayBuffer = await file.arrayBuffer();
+        const base64Data = Buffer.from(arrayBuffer).toString('base64');
+
+        // 提取合同信息 - 使用智谱AI
+        const contractResult = await zhipuOCR.extractContract(base64Data, file.type);
+
+        if (!contractResult.success) {
+          throw new Error(contractResult.error || '合同信息提取失败');
+        }
+
+        const contractInfo = contractResult.contractInfo;
 
         let replacementRules: ReplaceRule[] = [];
         let previewResult = null;
@@ -133,37 +140,37 @@ function generateReplacementRules(contractInfo: ContractInfo): ReplaceRule[] {
     {
       key: '甲方',
       searchPatterns: ['甲方：', '甲方:', '甲方 ', '第一方：', '第一方:'],
-      value: contractInfo.甲方
+      value: contractInfo.parties.partyA
     },
     {
-      key: '乙方', 
+      key: '乙方',
       searchPatterns: ['乙方：', '乙方:', '乙方 ', '第二方：', '第二方:'],
-      value: contractInfo.乙方
+      value: contractInfo.parties.partyB
     },
     {
       key: '合同金额',
       searchPatterns: ['合同金额：', '合同金额:', '总金额：', '总金额:', '金额：', '金额:'],
-      value: contractInfo.合同金额
+      value: contractInfo.amounts[0] // 取第一个金额
     },
     {
       key: '合同编号',
       searchPatterns: ['合同编号：', '合同编号:', '协议编号：', '协议编号:', '编号：', '编号:'],
-      value: contractInfo.合同编号
+      value: contractInfo.keyTerms.find(term => term.includes('编号'))?.split('：')[1] || contractInfo.keyTerms.find(term => term.includes('编号'))?.split(':')[1]
     },
     {
       key: '签署日期',
       searchPatterns: ['签署日期：', '签署日期:', '签订日期：', '签订日期:', '日期：', '日期:'],
-      value: contractInfo.签署日期
+      value: contractInfo.dates[0] // 取第一个日期
     },
     {
       key: '联系人',
       searchPatterns: ['联系人：', '联系人:', '负责人：', '负责人:'],
-      value: contractInfo.联系人
+      value: contractInfo.keyTerms.find(term => term.includes('联系人') || term.includes('负责人'))?.split(/[：:]/)[1]
     },
     {
       key: '联系电话',
       searchPatterns: ['联系电话：', '联系电话:', '电话：', '电话:', '手机：', '手机:'],
-      value: contractInfo.联系电话
+      value: contractInfo.keyTerms.find(term => term.includes('电话') || term.includes('手机'))?.split(/[：:]/)[1]
     }
   ];
 
@@ -252,23 +259,31 @@ function generateSuggestions(contractInfo: ContractInfo): string[] {
   }
 
   // 检查日期格式
-  if (contractInfo.签署日期) {
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    if (!datePattern.test(contractInfo.签署日期)) {
-      suggestions.push('建议确认签署日期格式是否正确（YYYY-MM-DD）');
+  if (contractInfo.dates && contractInfo.dates.length > 0) {
+    const datePattern = /^\d{4}[-年]\d{1,2}[-月]\d{1,2}[日]?$/;
+    const firstDate = contractInfo.dates[0];
+    if (!datePattern.test(firstDate)) {
+      suggestions.push('建议确认签署日期格式是否正确');
     }
   }
 
   // 检查金额格式
-  if (contractInfo.合同金额) {
-    const amountPattern = /[\d,]+(\.\d{2})?/;
-    if (!amountPattern.test(contractInfo.合同金额)) {
+  if (contractInfo.amounts && contractInfo.amounts.length > 0) {
+    const amountPattern = /[\d,¥￥$]+(\.\d{2})?/;
+    const firstAmount = contractInfo.amounts[0];
+    if (!amountPattern.test(firstAmount)) {
       suggestions.push('建议确认合同金额格式是否正确');
     }
   }
 
   // 提供优化建议
-  if (Object.keys(contractInfo).length < 5) {
+  const totalFields = (contractInfo.parties.partyA ? 1 : 0) +
+                     (contractInfo.parties.partyB ? 1 : 0) +
+                     contractInfo.amounts.length +
+                     contractInfo.dates.length +
+                     contractInfo.keyTerms.length;
+
+  if (totalFields < 5) {
     suggestions.push('如果图片中包含更多信息，建议使用更清晰的图片重新识别');
   }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
-import { geminiOCR } from '@/lib/gemini-ocr';
+import { zhipuOCR } from '@/lib/zhipu-ocr';
 import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
 
 /**
@@ -65,31 +65,36 @@ async function handleOCRRequest(req: NextRequest, user: any) {
 
       try {
         console.log('[OCR Extract] 开始OCR处理...');
+
+        // 将文件转换为base64
+        const arrayBuffer = await file.arrayBuffer();
+        const base64Data = Buffer.from(arrayBuffer).toString('base64');
+
         let result;
 
         if (extractStructured) {
           console.log('[OCR Extract] 执行结构化信息提取...');
-          // 结构化信息提取
-          result = await geminiOCR.extractStructuredData(file, {
-            language,
-            maxRetries: 2,
-            timeout: 30000
-          });
+          // 结构化信息提取 - 使用智谱AI
+          result = await zhipuOCR.extractText(base64Data, file.type);
+
+          // 为了保持兼容性，添加structuredData字段
+          if (result.success) {
+            (result as any).structuredData = {
+              extractedText: result.text,
+              confidence: result.confidence
+            };
+          }
         } else {
           console.log('[OCR Extract] 执行基础文字识别...');
-          // 基础文字识别
-          result = await geminiOCR.extractText(file, {
-            language,
-            maxRetries: 2,
-            timeout: 30000
-          });
+          // 基础文字识别 - 使用智谱AI
+          result = await zhipuOCR.extractText(base64Data, file.type);
         }
 
         console.log('[OCR Extract] OCR处理完成:', {
           textLength: result.text?.length || 0,
           confidence: result.confidence,
           processingTime: result.processingTime,
-          hasStructuredData: !!result.structuredData,
+          hasStructuredData: !!(result as any).structuredData,
         });
 
         // 记录使用情况（用于成本控制）
@@ -128,9 +133,9 @@ async function handleOCRRequest(req: NextRequest, user: any) {
 
         // 根据错误类型返回不同的错误信息
         if (ocrError instanceof Error) {
-          if (ocrError.message.includes('API key') || ocrError.message.includes('GOOGLE_API_KEY')) {
+          if (ocrError.message.includes('API key') || ocrError.message.includes('智谱AI API密钥')) {
             return NextResponse.json(
-              createErrorResponse('OCR_API_KEY_ERROR', 'OCR服务配置错误，请检查API密钥配置'),
+              createErrorResponse('OCR_API_KEY_ERROR', 'OCR服务配置错误，请检查智谱AI API密钥配置'),
               { status: 500 }
             );
           }
