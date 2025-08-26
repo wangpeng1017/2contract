@@ -39,7 +39,7 @@ export class GeminiOCRService {
   private maxRetries: number;
   private timeout: number;
 
-  constructor(apiKey?: string, model: string = 'gemini-1.5-flash') {
+  constructor(apiKey?: string, model: string = 'gemini-2.5-flash') {
     this.apiKey = apiKey || process.env.GOOGLE_API_KEY || '';
     this.model = model;
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
@@ -264,10 +264,11 @@ export class GeminiOCRService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
-        const response = await fetch(`${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`, {
+        const response = await fetch(`${this.baseUrl}/models/${this.model}:generateContent`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-goog-api-key': this.apiKey,
           },
           signal: controller.signal,
           body: JSON.stringify({
@@ -305,14 +306,32 @@ export class GeminiOCRService {
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          console.error('[GeminiOCR] API 请求失败:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+            model: this.model,
+            attempt: attempt
+          });
           throw new Error(`Gemini API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
         }
         
         const data = await response.json();
         
         if (!data.candidates || data.candidates.length === 0) {
+          console.error('[GeminiOCR] API 响应无效:', {
+            data: data,
+            model: this.model,
+            attempt: attempt
+          });
           throw new Error('No response from Gemini API');
         }
+
+        console.log('[GeminiOCR] API 调用成功:', {
+          model: this.model,
+          attempt: attempt,
+          candidatesCount: data.candidates?.length || 0
+        });
         
         return data;
       } catch (error) {
@@ -422,9 +441,12 @@ export class GeminiOCRService {
   async validateApiKey(): Promise<boolean> {
     try {
       // 使用一个简单的测试请求验证API密钥
-      const response = await fetch(`${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`, {
+      const response = await fetch(`${this.baseUrl}/models/${this.model}:generateContent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': this.apiKey
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'test' }] }]
         })
