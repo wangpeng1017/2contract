@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useRef, useEffect, Suspense } from 'react';
+import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { AdvancedFormField } from '@/components/form/AdvancedFormField';
 import { TableData } from '@/components/form/TableEditor';
 
@@ -41,7 +42,10 @@ interface FormData {
   [key: string]: string | string[] | TableData[];
 }
 
-export default function LocalDocsPage() {
+function LocalDocsContent() {
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get('template');
+
   const [currentStep, setCurrentStep] = useState(1);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [placeholders, setPlaceholders] = useState<Placeholder[]>([]);
@@ -51,8 +55,15 @@ export default function LocalDocsPage() {
   const [generatedDocUrl, setGeneratedDocUrl] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 如果有模板ID，自动加载模板
+  useEffect(() => {
+    if (templateId) {
+      loadTemplateById(templateId);
+    }
+  }, [templateId]);
 
   // 表单验证函数
   const validateField = (placeholder: Placeholder, value: string | string[] | TableData[]): string | null => {
@@ -134,6 +145,48 @@ export default function LocalDocsPage() {
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  // 从模板库加载模板
+  const loadTemplateById = async (templateId: string) => {
+    try {
+      setIsProcessing(true);
+      setProcessingStatus('正在加载模板...');
+
+      // 获取模板信息
+      const response = await fetch(`/api/local-docs/templates/${templateId}`);
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || '加载模板失败');
+      }
+
+      // 下载模板文件
+      const downloadResponse = await fetch(`/api/local-docs/templates/${templateId}/download`);
+      if (!downloadResponse.ok) {
+        throw new Error('下载模板文件失败');
+      }
+
+      const blob = await downloadResponse.blob();
+      const file = new File([blob], `${result.data.metadata.name}.docx`, {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      });
+
+      setUploadedFile(file);
+      setPlaceholders(result.data.placeholders);
+      setCurrentStep(2);
+      setProcessingStatus('模板加载成功！');
+
+      setTimeout(() => {
+        setProcessingStatus('');
+      }, 2000);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载模板失败');
+      setProcessingStatus('');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -333,47 +386,101 @@ export default function LocalDocsPage() {
 
       {/* 步骤1: 上传模板 */}
       {currentStep === 1 && (
-        <div className="card p-8">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Upload size={32} className="text-blue-600" />
-            </div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              上传Word模板文件
-            </h2>
-            <p className="text-gray-600 mb-8">
-              请上传包含占位符的Word文档模板（.docx格式）
-            </p>
-            
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-400 transition-colors">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".docx"
-                onChange={handleFileUpload}
-                className="hidden"
-                disabled={isProcessing}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessing}
-                className="btn-primary px-8 py-3 text-lg"
-              >
-                {isProcessing ? '解析中...' : '选择文件'}
-              </button>
-              <p className="text-sm text-gray-500 mt-4">
-                支持的占位符格式: {`{{变量名}}`}
-              </p>
+        <div className="space-y-6">
+          {/* 选择方式 */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* 上传新文件 */}
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Upload size={20} className="mr-2" />
+                上传新模板
+              </h3>
+
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".docx"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  disabled={isProcessing}
+                />
+
+                <Upload size={32} className="mx-auto text-gray-400 mb-3" />
+
+                <div className="space-y-2">
+                  <p className="text-gray-700">
+                    点击选择Word文档
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    支持 .docx 格式
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessing}
+                  className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {isProcessing ? '处理中...' : '选择文件'}
+                </button>
+              </div>
+
+              {uploadedFile && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center">
+                    <FileText size={16} className="text-green-600 mr-2" />
+                    <span className="text-green-700 text-sm">已选择: {uploadedFile.name}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {uploadedFile && (
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center justify-center">
-                  <FileText size={20} className="text-green-600 mr-2" />
-                  <span className="text-green-700">已选择: {uploadedFile.name}</span>
+            {/* 从模板库选择 */}
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <BookOpen size={20} className="mr-2" />
+                使用已保存模板
+              </h3>
+
+              <div className="text-center py-6">
+                <BookOpen size={32} className="mx-auto text-gray-400 mb-3" />
+
+                <div className="space-y-2 mb-4">
+                  <p className="text-gray-700">
+                    从模板库选择
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    使用已保存的模板快速开始
+                  </p>
                 </div>
+
+                <Link
+                  href="/local-docs/templates"
+                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                >
+                  <BookOpen size={16} className="mr-2" />
+                  浏览模板库
+                </Link>
               </div>
-            )}
+            </div>
+          </div>
+
+          {/* 占位符格式说明 */}
+          <div className="card p-6">
+            <h3 className="font-medium text-gray-900 mb-3">占位符格式说明：</h3>
+            <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-600">
+              <ul className="space-y-1 list-disc list-inside">
+                <li>使用双花括号格式：<code className="bg-gray-100 px-1 rounded">{'{{变量名}}'}</code></li>
+                <li>变量名支持中文和英文</li>
+                <li>系统会自动识别数据类型</li>
+              </ul>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>支持表格中的占位符</li>
+                <li>支持11种数据类型</li>
+                <li>自动生成相应的输入控件</li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
@@ -419,7 +526,7 @@ export default function LocalDocsPage() {
               ))}
             </div>
 
-            <div className="flex justify-between pt-6">
+            <div className="flex justify-between items-center pt-6">
               <button
                 type="button"
                 onClick={resetProcess}
@@ -427,13 +534,25 @@ export default function LocalDocsPage() {
               >
                 重新上传
               </button>
-              <button
-                type="submit"
-                disabled={isProcessing}
-                className="btn-primary px-8 py-2"
-              >
-                {isProcessing ? '生成中...' : '生成文档'}
-              </button>
+
+              <div className="flex space-x-3">
+                {!templateId && (
+                  <Link
+                    href="/local-docs/templates/new"
+                    className="inline-flex items-center px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    <BookOpen size={16} className="mr-2" />
+                    保存为模板
+                  </Link>
+                )}
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="btn-primary px-8 py-2"
+                >
+                  {isProcessing ? '生成中...' : '生成文档'}
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -478,5 +597,20 @@ export default function LocalDocsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LocalDocsPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-gray-600">加载中...</span>
+        </div>
+      </div>
+    }>
+      <LocalDocsContent />
+    </Suspense>
   );
 }
