@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, Suspense } from 'react';
-import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen, FileDown } from 'lucide-react';
+import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen, FileDown, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AdvancedFormField } from '@/components/form/AdvancedFormField';
 import { TableData } from '@/components/form/TableEditor';
+import { AIFormFiller } from '@/components/ai/AIFormFiller';
 
 interface Placeholder {
   name: string;
@@ -56,6 +57,7 @@ function LocalDocsContent() {
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [exportFormat, setExportFormat] = useState<'docx' | 'pdf'>('docx');
+  const [showAIFiller, setShowAIFiller] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -513,9 +515,27 @@ function LocalDocsContent() {
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">
               填写模板数据
             </h2>
-            <p className="text-gray-600">
+            <p className="text-gray-600 mb-4">
               系统已识别到 {placeholders.length} 个占位符，请填写相应的内容
             </p>
+
+            {/* AI填充提示 */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-center space-x-2 text-blue-700">
+                <Sparkles size={20} />
+                <span className="font-medium">AI智能填充</span>
+              </div>
+              <p className="text-sm text-blue-600 mt-2">
+                用自然语言描述内容，AI助手将智能填充表单字段
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowAIFiller(true)}
+                className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+              >
+                开启AI填充
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleFormSubmit} className="space-y-6">
@@ -650,6 +670,17 @@ function LocalDocsContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI智能填充组件 */}
+      {currentStep === 2 && placeholders.length > 0 && (
+        <AIFormFiller
+          placeholders={placeholders}
+          onFieldsUpdate={setFormData}
+          currentValues={formData}
+          isVisible={showAIFiller}
+          onToggle={() => setShowAIFiller(!showAIFiller)}
+        />
       )}
     </div>
   );
