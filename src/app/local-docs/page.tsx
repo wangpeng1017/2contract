@@ -6,8 +6,10 @@ import Link from 'next/link';
 
 interface Placeholder {
   name: string;
-  type: 'text' | 'date' | 'number' | 'email';
+  type: 'text' | 'date' | 'number' | 'email' | 'boolean';
   required: boolean;
+  description?: string;
+  defaultValue?: string;
 }
 
 interface FormData {
@@ -22,6 +24,7 @@ export default function LocalDocsPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedDocUrl, setGeneratedDocUrl] = useState<string | null>(null);
+  const [processingStatus, setProcessingStatus] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,11 +40,14 @@ export default function LocalDocsPage() {
     setError(null);
     setUploadedFile(file);
     setIsProcessing(true);
+    setProcessingStatus('正在解析模板文件...');
 
     try {
       // 创建FormData对象
       const formDataObj = new FormData();
       formDataObj.append('template', file);
+
+      setProcessingStatus('正在识别占位符...');
 
       // 调用后端API解析模板
       const response = await fetch('/api/local-docs/parse-template', {
@@ -50,19 +56,25 @@ export default function LocalDocsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('模板解析失败');
+        const errorData = await response.json();
+        throw new Error(errorData.message || '模板解析失败');
       }
 
       const result = await response.json();
-      
+
       if (result.success) {
         setPlaceholders(result.data.placeholders);
-        setCurrentStep(2);
+        setProcessingStatus(`成功识别 ${result.data.placeholders.length} 个占位符`);
+        setTimeout(() => {
+          setCurrentStep(2);
+          setProcessingStatus('');
+        }, 1000);
       } else {
         throw new Error(result.message || '模板解析失败');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '模板解析失败');
+      setProcessingStatus('');
     } finally {
       setIsProcessing(false);
     }
@@ -83,6 +95,7 @@ export default function LocalDocsPage() {
 
     setError(null);
     setIsProcessing(true);
+    setProcessingStatus('正在生成文档...');
 
     try {
       // 创建FormData对象
@@ -92,6 +105,8 @@ export default function LocalDocsPage() {
       }
       formDataObj.append('data', JSON.stringify(formData));
 
+      setProcessingStatus('正在填充数据...');
+
       // 调用后端API生成文档
       const response = await fetch('/api/local-docs/generate-document', {
         method: 'POST',
@@ -99,16 +114,32 @@ export default function LocalDocsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('文档生成失败');
+        const errorText = await response.text();
+        let errorMessage = '文档生成失败';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // 如果不是JSON，使用默认错误消息
+        }
+        throw new Error(errorMessage);
       }
+
+      setProcessingStatus('正在准备下载...');
 
       // 处理文件下载
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       setGeneratedDocUrl(url);
-      setCurrentStep(3);
+
+      setProcessingStatus('文档生成成功！');
+      setTimeout(() => {
+        setCurrentStep(3);
+        setProcessingStatus('');
+      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : '文档生成失败');
+      setProcessingStatus('');
     } finally {
       setIsProcessing(false);
     }
@@ -186,6 +217,16 @@ export default function LocalDocsPage() {
         </div>
       )}
 
+      {/* 处理状态提示 */}
+      {processingStatus && (
+        <div className="card p-4 mb-6 bg-blue-50 border border-blue-200">
+          <div className="flex items-center">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+            <span className="text-blue-700">{processingStatus}</span>
+          </div>
+        </div>
+      )}
+
       {/* 步骤1: 上传模板 */}
       {currentStep === 1 && (
         <div className="card p-8">
@@ -256,17 +297,56 @@ export default function LocalDocsPage() {
                     {placeholder.name}
                     {placeholder.required && <span className="text-red-500 ml-1">*</span>}
                   </label>
-                  <input
-                    type={placeholder.type}
-                    value={formData[placeholder.name] || ''}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      [placeholder.name]: e.target.value
-                    }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={`请输入${placeholder.name}`}
-                    required={placeholder.required}
-                  />
+                  {placeholder.description && (
+                    <p className="text-xs text-gray-500 mb-1">{placeholder.description}</p>
+                  )}
+
+                  {placeholder.type === 'boolean' ? (
+                    <div className="flex items-center space-x-3">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name={placeholder.name}
+                          value="true"
+                          checked={formData[placeholder.name] === 'true'}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            [placeholder.name]: e.target.value
+                          }))}
+                          className="mr-2"
+                        />
+                        是
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name={placeholder.name}
+                          value="false"
+                          checked={formData[placeholder.name] === 'false'}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            [placeholder.name]: e.target.value
+                          }))}
+                          className="mr-2"
+                        />
+                        否
+                      </label>
+                    </div>
+                  ) : (
+                    <input
+                      type={placeholder.type}
+                      value={formData[placeholder.name] || placeholder.defaultValue || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        [placeholder.name]: e.target.value
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={placeholder.description || `请输入${placeholder.name}`}
+                      required={placeholder.required}
+                      min={placeholder.type === 'number' ? '0' : undefined}
+                      step={placeholder.type === 'number' ? '0.01' : undefined}
+                    />
+                  )}
                 </div>
               ))}
             </div>
