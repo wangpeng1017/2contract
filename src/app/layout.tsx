@@ -6,10 +6,10 @@ import { LoginButton } from '@/components/auth/LoginButton';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: '飞书合同内容更新助手',
-  description: '简化和自动化更新飞书云文档中的合同内容',
-  keywords: ['飞书', '合同', '文档更新', '自动化'],
-  authors: [{ name: '飞书合同助手团队' }],
+  title: '智能文档处理助手',
+  description: '提供本地文档处理和飞书云文档处理两种解决方案',
+  keywords: ['文档处理', '合同模板', '飞书', '文档更新', '自动化'],
+  authors: [{ name: '智能文档处理团队' }],
   viewport: 'width=device-width, initial-scale=1',
 };
 
@@ -30,7 +30,7 @@ export default function RootLayout({
                     <span className="text-white font-bold text-sm">飞</span>
                   </div>
                   <h1 className="text-xl font-semibold text-gray-900">
-                    飞书合同内容更新助手
+                    智能文档处理助手
                   </h1>
                 </div>
                 <div className="flex items-center space-x-6">
@@ -55,12 +55,12 @@ export default function RootLayout({
           <footer className="bg-white border-t mt-16">
             <div className="container mx-auto px-4 py-6">
               <div className="text-center text-gray-600 text-sm">
-                <p>&copy; 2024 飞书合同内容更新助手. 保留所有权利.</p>
+                <p>&copy; 2024 智能文档处理助手. 保留所有权利.</p>
                 <p className="mt-1">
-                  基于飞书开放平台构建 | 
+                  支持本地处理和云端协作 |
                   <a href="#" className="text-feishu-600 hover:text-feishu-700 ml-1">
                     隐私政策
-                  </a> | 
+                  </a> |
                   <a href="#" className="text-feishu-600 hover:text-feishu-700 ml-1">
                     服务条款
                   </a>
