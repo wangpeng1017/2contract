@@ -8,10 +8,40 @@ import { createReport } from 'docx-templates';
 
 export interface PlaceholderInfo {
   name: string;
-  type: 'text' | 'date' | 'number' | 'email' | 'boolean';
+  type: 'text' | 'date' | 'number' | 'email' | 'boolean' | 'select' | 'multiselect' | 'textarea' | 'url' | 'tel' | 'file' | 'table';
   required: boolean;
   defaultValue?: string;
   description?: string;
+  options?: string[]; // 用于select和multiselect类型
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    minLength?: number;
+    maxLength?: number;
+  };
+  placeholder?: string;
+  helpText?: string;
+  // 表格相关属性
+  tableConfig?: {
+    columns: TableColumn[];
+    minRows?: number;
+    maxRows?: number;
+    allowAddRows?: boolean;
+    allowDeleteRows?: boolean;
+  };
+}
+
+export interface TableColumn {
+  name: string;
+  type: 'text' | 'number' | 'date' | 'select';
+  required?: boolean;
+  options?: string[]; // 用于select类型
+  width?: string; // CSS宽度
+}
+
+export interface TableData {
+  [columnName: string]: string | number;
 }
 
 export interface DocumentTemplate {
@@ -102,11 +132,17 @@ export class WordProcessor {
         if (placeholderName && !placeholderSet.has(placeholderName)) {
           placeholderSet.add(placeholderName);
           
+          const placeholderType = this.inferPlaceholderType(placeholderName);
           const placeholder: PlaceholderInfo = {
             name: placeholderName,
-            type: this.inferPlaceholderType(placeholderName),
+            type: placeholderType,
             required: true, // MVP阶段默认都是必填
-            description: this.generatePlaceholderDescription(placeholderName)
+            description: this.generatePlaceholderDescription(placeholderName),
+            options: this.generatePlaceholderOptions(placeholderName, placeholderType),
+            validation: this.generatePlaceholderValidation(placeholderName, placeholderType),
+            placeholder: this.generatePlaceholderText(placeholderName, placeholderType),
+            helpText: this.generateHelpText(placeholderName, placeholderType),
+            tableConfig: placeholderType === 'table' ? this.generateTableConfig(placeholderName) : undefined
           };
           
           placeholders.push(placeholder);
@@ -128,34 +164,79 @@ export class WordProcessor {
    */
   private static inferPlaceholderType(name: string): PlaceholderInfo['type'] {
     const lowerName = name.toLowerCase();
-    
+
     // 日期类型
-    if (lowerName.includes('日期') || lowerName.includes('时间') || 
+    if (lowerName.includes('日期') || lowerName.includes('时间') ||
         lowerName.includes('date') || lowerName.includes('time')) {
       return 'date';
     }
-    
+
     // 数字类型
-    if (lowerName.includes('金额') || lowerName.includes('价格') || 
-        lowerName.includes('数量') || lowerName.includes('amount') || 
+    if (lowerName.includes('金额') || lowerName.includes('价格') ||
+        lowerName.includes('数量') || lowerName.includes('amount') ||
         lowerName.includes('price') || lowerName.includes('count') ||
         lowerName.includes('费用') || lowerName.includes('成本')) {
       return 'number';
     }
-    
+
     // 邮箱类型
-    if (lowerName.includes('邮箱') || lowerName.includes('邮件') || 
+    if (lowerName.includes('邮箱') || lowerName.includes('邮件') ||
         lowerName.includes('email') || lowerName.includes('mail')) {
       return 'email';
     }
-    
+
+    // 电话类型
+    if (lowerName.includes('电话') || lowerName.includes('手机') ||
+        lowerName.includes('phone') || lowerName.includes('tel') ||
+        lowerName.includes('mobile')) {
+      return 'tel';
+    }
+
+    // URL类型
+    if (lowerName.includes('网址') || lowerName.includes('链接') ||
+        lowerName.includes('url') || lowerName.includes('website') ||
+        lowerName.includes('网站')) {
+      return 'url';
+    }
+
+    // 文件类型
+    if (lowerName.includes('文件') || lowerName.includes('附件') ||
+        lowerName.includes('file') || lowerName.includes('attachment') ||
+        lowerName.includes('上传')) {
+      return 'file';
+    }
+
+    // 多行文本类型
+    if (lowerName.includes('备注') || lowerName.includes('说明') ||
+        lowerName.includes('描述') || lowerName.includes('详情') ||
+        lowerName.includes('内容') || lowerName.includes('comment') ||
+        lowerName.includes('description') || lowerName.includes('note')) {
+      return 'textarea';
+    }
+
+    // 表格类型
+    if (lowerName.includes('表格') || lowerName.includes('列表') ||
+        lowerName.includes('明细') || lowerName.includes('清单') ||
+        lowerName.includes('table') || lowerName.includes('list') ||
+        lowerName.includes('items') || lowerName.includes('details')) {
+      return 'table';
+    }
+
+    // 选择类型（基于常见的选择字段）
+    if (lowerName.includes('类型') || lowerName.includes('分类') ||
+        lowerName.includes('状态') || lowerName.includes('级别') ||
+        lowerName.includes('type') || lowerName.includes('category') ||
+        lowerName.includes('status') || lowerName.includes('level')) {
+      return 'select';
+    }
+
     // 布尔类型
-    if (lowerName.includes('是否') || lowerName.includes('启用') || 
+    if (lowerName.includes('是否') || lowerName.includes('启用') ||
         lowerName.includes('enable') || lowerName.includes('disable') ||
         lowerName.includes('同意') || lowerName.includes('确认')) {
       return 'boolean';
     }
-    
+
     // 默认文本类型
     return 'text';
   }
@@ -171,16 +252,251 @@ export class WordProcessor {
       '金额': '请输入金额（数字）',
       '电话': '请输入联系电话',
       '邮箱': '请输入邮箱地址',
-      '地址': '请输入详细地址'
+      '地址': '请输入详细地址',
+      '网址': '请输入网站地址',
+      '文件': '请选择要上传的文件',
+      '备注': '请输入详细说明',
+      '类型': '请选择类型',
+      '状态': '请选择状态'
     };
-    
+
     for (const [key, desc] of Object.entries(typeDescriptions)) {
       if (name.includes(key)) {
         return desc;
       }
     }
-    
+
     return `请输入${name}`;
+  }
+
+  /**
+   * 生成选择类型字段的选项
+   */
+  private static generatePlaceholderOptions(name: string, type: PlaceholderInfo['type']): string[] | undefined {
+    if (type !== 'select' && type !== 'multiselect') {
+      return undefined;
+    }
+
+    const lowerName = name.toLowerCase();
+
+    // 合同类型
+    if (lowerName.includes('合同类型') || lowerName.includes('contract type')) {
+      return ['销售合同', '采购合同', '服务合同', '租赁合同', '劳动合同'];
+    }
+
+    // 付款方式
+    if (lowerName.includes('付款方式') || lowerName.includes('payment method')) {
+      return ['现金', '银行转账', '支票', '信用卡', '分期付款'];
+    }
+
+    // 状态
+    if (lowerName.includes('状态') || lowerName.includes('status')) {
+      return ['待处理', '进行中', '已完成', '已取消', '已暂停'];
+    }
+
+    // 优先级
+    if (lowerName.includes('优先级') || lowerName.includes('priority')) {
+      return ['低', '中', '高', '紧急'];
+    }
+
+    // 部门
+    if (lowerName.includes('部门') || lowerName.includes('department')) {
+      return ['销售部', '市场部', '技术部', '财务部', '人事部', '行政部'];
+    }
+
+    // 职位
+    if (lowerName.includes('职位') || lowerName.includes('position')) {
+      return ['经理', '主管', '专员', '助理', '总监', '副总'];
+    }
+
+    // 默认选项
+    return ['选项1', '选项2', '选项3'];
+  }
+
+  /**
+   * 生成字段验证规则
+   */
+  private static generatePlaceholderValidation(name: string, type: PlaceholderInfo['type']): PlaceholderInfo['validation'] | undefined {
+    const lowerName = name.toLowerCase();
+
+    switch (type) {
+      case 'number':
+        if (lowerName.includes('金额') || lowerName.includes('价格')) {
+          return { min: 0, max: 999999999 };
+        }
+        if (lowerName.includes('数量')) {
+          return { min: 1, max: 10000 };
+        }
+        return { min: 0 };
+
+      case 'text':
+        if (lowerName.includes('姓名') || lowerName.includes('name')) {
+          return { minLength: 2, maxLength: 50 };
+        }
+        if (lowerName.includes('公司')) {
+          return { minLength: 2, maxLength: 100 };
+        }
+        return { maxLength: 200 };
+
+      case 'textarea':
+        return { maxLength: 1000 };
+
+      case 'tel':
+        return { pattern: '^[0-9+\\-\\s()]+$', minLength: 7, maxLength: 20 };
+
+      case 'email':
+        return { pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$' };
+
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * 生成占位符提示文本
+   */
+  private static generatePlaceholderText(name: string, type: PlaceholderInfo['type']): string {
+    switch (type) {
+      case 'email':
+        return 'example@company.com';
+      case 'tel':
+        return '138-0000-0000';
+      case 'url':
+        return 'https://www.example.com';
+      case 'date':
+        return '选择日期';
+      case 'number':
+        return '输入数字';
+      case 'textarea':
+        return '输入详细内容...';
+      default:
+        return `输入${name}`;
+    }
+  }
+
+  /**
+   * 生成帮助文本
+   */
+  private static generateHelpText(name: string, type: PlaceholderInfo['type']): string | undefined {
+    const lowerName = name.toLowerCase();
+
+    if (type === 'email') {
+      return '请输入有效的邮箱地址';
+    }
+
+    if (type === 'tel') {
+      return '请输入有效的电话号码';
+    }
+
+    if (type === 'url') {
+      return '请输入完整的网址，包含http://或https://';
+    }
+
+    if (type === 'file') {
+      return '支持常见文档格式：PDF、Word、Excel等';
+    }
+
+    if (lowerName.includes('金额')) {
+      return '请输入数字，系统会自动格式化';
+    }
+
+    if (lowerName.includes('日期')) {
+      return '请选择具体的日期';
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 生成表格配置
+   */
+  private static generateTableConfig(name: string): PlaceholderInfo['tableConfig'] {
+    const lowerName = name.toLowerCase();
+
+    // 费用明细表
+    if (lowerName.includes('费用') || lowerName.includes('cost') || lowerName.includes('expense')) {
+      return {
+        columns: [
+          { name: '项目名称', type: 'text', required: true, width: '30%' },
+          { name: '数量', type: 'number', required: true, width: '15%' },
+          { name: '单价', type: 'number', required: true, width: '20%' },
+          { name: '金额', type: 'number', required: true, width: '20%' },
+          { name: '备注', type: 'text', required: false, width: '15%' }
+        ],
+        minRows: 1,
+        maxRows: 20,
+        allowAddRows: true,
+        allowDeleteRows: true
+      };
+    }
+
+    // 产品清单
+    if (lowerName.includes('产品') || lowerName.includes('商品') || lowerName.includes('product')) {
+      return {
+        columns: [
+          { name: '产品名称', type: 'text', required: true, width: '25%' },
+          { name: '规格型号', type: 'text', required: false, width: '20%' },
+          { name: '数量', type: 'number', required: true, width: '15%' },
+          { name: '单价', type: 'number', required: true, width: '15%' },
+          { name: '总价', type: 'number', required: true, width: '15%' },
+          { name: '交付日期', type: 'date', required: false, width: '10%' }
+        ],
+        minRows: 1,
+        maxRows: 50,
+        allowAddRows: true,
+        allowDeleteRows: true
+      };
+    }
+
+    // 人员信息
+    if (lowerName.includes('人员') || lowerName.includes('员工') || lowerName.includes('staff') || lowerName.includes('personnel')) {
+      return {
+        columns: [
+          { name: '姓名', type: 'text', required: true, width: '20%' },
+          { name: '职位', type: 'select', required: true, width: '20%', options: ['经理', '主管', '专员', '助理'] },
+          { name: '部门', type: 'select', required: true, width: '20%', options: ['销售部', '技术部', '财务部', '人事部'] },
+          { name: '联系电话', type: 'text', required: false, width: '20%' },
+          { name: '入职日期', type: 'date', required: false, width: '20%' }
+        ],
+        minRows: 1,
+        maxRows: 100,
+        allowAddRows: true,
+        allowDeleteRows: true
+      };
+    }
+
+    // 付款计划
+    if (lowerName.includes('付款') || lowerName.includes('支付') || lowerName.includes('payment')) {
+      return {
+        columns: [
+          { name: '期数', type: 'number', required: true, width: '15%' },
+          { name: '付款日期', type: 'date', required: true, width: '25%' },
+          { name: '付款金额', type: 'number', required: true, width: '25%' },
+          { name: '付款方式', type: 'select', required: true, width: '20%', options: ['现金', '银行转账', '支票', '信用卡'] },
+          { name: '备注', type: 'text', required: false, width: '15%' }
+        ],
+        minRows: 1,
+        maxRows: 12,
+        allowAddRows: true,
+        allowDeleteRows: true
+      };
+    }
+
+    // 默认通用表格
+    return {
+      columns: [
+        { name: '序号', type: 'number', required: true, width: '10%' },
+        { name: '名称', type: 'text', required: true, width: '30%' },
+        { name: '数量', type: 'number', required: false, width: '15%' },
+        { name: '单价', type: 'number', required: false, width: '15%' },
+        { name: '金额', type: 'number', required: false, width: '15%' },
+        { name: '备注', type: 'text', required: false, width: '15%' }
+      ],
+      minRows: 1,
+      maxRows: 20,
+      allowAddRows: true,
+      allowDeleteRows: true
+    };
   }
   
   /**
@@ -192,43 +508,117 @@ export class WordProcessor {
         name: '甲方公司名称',
         type: 'text',
         required: true,
-        description: '请输入甲方公司全称'
+        description: '请输入甲方公司全称',
+        validation: { minLength: 2, maxLength: 100 },
+        placeholder: '输入甲方公司名称'
       },
       {
         name: '乙方公司名称',
         type: 'text',
         required: true,
-        description: '请输入乙方公司全称'
+        description: '请输入乙方公司全称',
+        validation: { minLength: 2, maxLength: 100 },
+        placeholder: '输入乙方公司名称'
+      },
+      {
+        name: '合同类型',
+        type: 'select',
+        required: true,
+        description: '请选择合同类型',
+        options: ['销售合同', '采购合同', '服务合同', '租赁合同', '劳动合同']
       },
       {
         name: '合同金额',
         type: 'number',
         required: true,
-        description: '请输入合同金额（数字）'
+        description: '请输入合同金额（数字）',
+        validation: { min: 0, max: 999999999 },
+        placeholder: '输入数字',
+        helpText: '请输入数字，系统会自动格式化'
       },
       {
         name: '签署日期',
         type: 'date',
         required: true,
-        description: '请选择合同签署日期'
+        description: '请选择合同签署日期',
+        placeholder: '选择日期',
+        helpText: '请选择具体的日期'
       },
       {
         name: '甲方联系人',
         type: 'text',
         required: true,
-        description: '请输入甲方联系人姓名'
+        description: '请输入甲方联系人姓名',
+        validation: { minLength: 2, maxLength: 50 },
+        placeholder: '输入甲方联系人'
+      },
+      {
+        name: '甲方电话',
+        type: 'tel',
+        required: true,
+        description: '请输入甲方联系电话',
+        validation: { pattern: '^[0-9+\\-\\s()]+$', minLength: 7, maxLength: 20 },
+        placeholder: '138-0000-0000',
+        helpText: '请输入有效的电话号码'
       },
       {
         name: '乙方联系人',
         type: 'text',
         required: true,
-        description: '请输入乙方联系人姓名'
+        description: '请输入乙方联系人姓名',
+        validation: { minLength: 2, maxLength: 50 },
+        placeholder: '输入乙方联系人'
       },
       {
         name: '联系邮箱',
         type: 'email',
         required: false,
-        description: '请输入联系邮箱地址'
+        description: '请输入联系邮箱地址',
+        validation: { pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$' },
+        placeholder: 'example@company.com',
+        helpText: '请输入有效的邮箱地址'
+      },
+      {
+        name: '付款方式',
+        type: 'select',
+        required: true,
+        description: '请选择付款方式',
+        options: ['现金', '银行转账', '支票', '信用卡', '分期付款']
+      },
+      {
+        name: '是否包含保险',
+        type: 'boolean',
+        required: true,
+        description: '请选择是否包含保险'
+      },
+      {
+        name: '特别约定',
+        type: 'textarea',
+        required: false,
+        description: '请输入特别约定内容',
+        validation: { maxLength: 1000 },
+        placeholder: '输入详细内容...'
+      },
+      {
+        name: '产品清单',
+        type: 'table',
+        required: true,
+        description: '请填写产品明细信息',
+        helpText: '可以添加多行产品信息',
+        tableConfig: {
+          columns: [
+            { name: '产品名称', type: 'text', required: true, width: '25%' },
+            { name: '规格型号', type: 'text', required: false, width: '20%' },
+            { name: '数量', type: 'number', required: true, width: '15%' },
+            { name: '单价', type: 'number', required: true, width: '15%' },
+            { name: '总价', type: 'number', required: true, width: '15%' },
+            { name: '交付日期', type: 'date', required: false, width: '10%' }
+          ],
+          minRows: 1,
+          maxRows: 10,
+          allowAddRows: true,
+          allowDeleteRows: true
+        }
       }
     ];
   }

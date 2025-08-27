@@ -3,17 +3,42 @@
 import { useState, useRef } from 'react';
 import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import { AdvancedFormField } from '@/components/form/AdvancedFormField';
+import { TableData } from '@/components/form/TableEditor';
 
 interface Placeholder {
   name: string;
-  type: 'text' | 'date' | 'number' | 'email' | 'boolean';
+  type: 'text' | 'date' | 'number' | 'email' | 'boolean' | 'select' | 'multiselect' | 'textarea' | 'url' | 'tel' | 'file' | 'table';
   required: boolean;
   description?: string;
   defaultValue?: string;
+  options?: string[];
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    minLength?: number;
+    maxLength?: number;
+  };
+  placeholder?: string;
+  helpText?: string;
+  tableConfig?: {
+    columns: Array<{
+      name: string;
+      type: 'text' | 'number' | 'date' | 'select';
+      required?: boolean;
+      options?: string[];
+      width?: string;
+    }>;
+    minRows?: number;
+    maxRows?: number;
+    allowAddRows?: boolean;
+    allowDeleteRows?: boolean;
+  };
 }
 
 interface FormData {
-  [key: string]: string;
+  [key: string]: string | string[] | TableData[];
 }
 
 export default function LocalDocsPage() {
@@ -25,8 +50,91 @@ export default function LocalDocsPage() {
   const [error, setError] = useState<string | null>(null);
   const [generatedDocUrl, setGeneratedDocUrl] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<string>('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 表单验证函数
+  const validateField = (placeholder: Placeholder, value: string | string[] | TableData[]): string | null => {
+    // 表格类型的特殊验证
+    if (placeholder.type === 'table') {
+      if (placeholder.required && (!value || !Array.isArray(value) || value.length === 0)) {
+        return `${placeholder.name}是必填项`;
+      }
+
+      if (Array.isArray(value) && placeholder.tableConfig) {
+        const tableData = value as TableData[];
+        const minRows = placeholder.tableConfig.minRows || 1;
+
+        if (tableData.length < minRows) {
+          return `${placeholder.name}至少需要${minRows}行数据`;
+        }
+
+        // 验证每行的必填字段
+        for (let i = 0; i < tableData.length; i++) {
+          const row = tableData[i];
+          for (const column of placeholder.tableConfig.columns) {
+            if (column.required && (!row[column.name] || row[column.name] === '')) {
+              return `${placeholder.name}第${i + 1}行的${column.name}是必填项`;
+            }
+          }
+        }
+      }
+
+      return null;
+    }
+
+    if (placeholder.required && (!value || (Array.isArray(value) ? value.length === 0 : !value.toString().trim()))) {
+      return `${placeholder.name}是必填项`;
+    }
+
+    if (!value || (Array.isArray(value) ? value.length === 0 : !value.toString().trim())) {
+      return null; // 非必填项为空时不验证
+    }
+
+    const stringValue = Array.isArray(value) ? value.join(',') : value.toString();
+    const validation = placeholder.validation;
+
+    if (validation) {
+      if (validation.minLength && stringValue.length < validation.minLength) {
+        return `${placeholder.name}至少需要${validation.minLength}个字符`;
+      }
+      if (validation.maxLength && stringValue.length > validation.maxLength) {
+        return `${placeholder.name}不能超过${validation.maxLength}个字符`;
+      }
+      if (validation.pattern && !new RegExp(validation.pattern).test(stringValue)) {
+        return `${placeholder.name}格式不正确`;
+      }
+      if (placeholder.type === 'number') {
+        const numValue = parseFloat(stringValue);
+        if (isNaN(numValue)) {
+          return `${placeholder.name}必须是数字`;
+        }
+        if (validation.min !== undefined && numValue < validation.min) {
+          return `${placeholder.name}不能小于${validation.min}`;
+        }
+        if (validation.max !== undefined && numValue > validation.max) {
+          return `${placeholder.name}不能大于${validation.max}`;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    placeholders.forEach(placeholder => {
+      const error = validateField(placeholder, formData[placeholder.name]);
+      if (error) {
+        errors[placeholder.name] = error;
+      }
+    });
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -83,13 +191,9 @@ export default function LocalDocsPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 验证必填字段
-    const missingFields = placeholders
-      .filter(p => p.required && !formData[p.name])
-      .map(p => p.name);
-    
-    if (missingFields.length > 0) {
-      setError(`请填写必填字段: ${missingFields.join(', ')}`);
+    // 验证表单
+    if (!validateForm()) {
+      setError('请检查并修正表单中的错误');
       return;
     }
 
@@ -292,62 +396,26 @@ export default function LocalDocsPage() {
           <form onSubmit={handleFormSubmit} className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
               {placeholders.map((placeholder) => (
-                <div key={placeholder.name}>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {placeholder.name}
-                    {placeholder.required && <span className="text-red-500 ml-1">*</span>}
-                  </label>
-                  {placeholder.description && (
-                    <p className="text-xs text-gray-500 mb-1">{placeholder.description}</p>
-                  )}
-
-                  {placeholder.type === 'boolean' ? (
-                    <div className="flex items-center space-x-3">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name={placeholder.name}
-                          value="true"
-                          checked={formData[placeholder.name] === 'true'}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            [placeholder.name]: e.target.value
-                          }))}
-                          className="mr-2"
-                        />
-                        是
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name={placeholder.name}
-                          value="false"
-                          checked={formData[placeholder.name] === 'false'}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            [placeholder.name]: e.target.value
-                          }))}
-                          className="mr-2"
-                        />
-                        否
-                      </label>
-                    </div>
-                  ) : (
-                    <input
-                      type={placeholder.type}
-                      value={formData[placeholder.name] || placeholder.defaultValue || ''}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        [placeholder.name]: e.target.value
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={placeholder.description || `请输入${placeholder.name}`}
-                      required={placeholder.required}
-                      min={placeholder.type === 'number' ? '0' : undefined}
-                      step={placeholder.type === 'number' ? '0.01' : undefined}
-                    />
-                  )}
-                </div>
+                <AdvancedFormField
+                  key={placeholder.name}
+                  placeholder={placeholder}
+                  value={formData[placeholder.name] || ''}
+                  onChange={(value) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      [placeholder.name]: value
+                    }));
+                    // 清除该字段的错误
+                    if (fieldErrors[placeholder.name]) {
+                      setFieldErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors[placeholder.name];
+                        return newErrors;
+                      });
+                    }
+                  }}
+                  error={fieldErrors[placeholder.name]}
+                />
               ))}
             </div>
 
