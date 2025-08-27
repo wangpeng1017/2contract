@@ -46,18 +46,34 @@ export class TextSearchEngine {
 
     if (wholeWord) {
       // 使用正则表达式进行全词匹配
-      const regex = new RegExp(`\\b${this.escapeRegExp(searchPattern)}\\b`, caseSensitive ? 'g' : 'gi');
-      let match;
-      
-      while ((match = regex.exec(text)) !== null) {
-        matches.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          text: match[0],
-          context: this.getContext(text, match.index, match[0].length, contextLength)
-        });
+      try {
+        // 对于中文文本，使用更灵活的边界匹配
+        const isChinese = /[\u4e00-\u9fff]/.test(searchPattern);
+        let regex;
 
-        if (maxMatches && matches.length >= maxMatches) break;
+        if (isChinese) {
+          // 中文整词匹配：前后不能是中文字符、字母或数字
+          regex = new RegExp(`(?<![\\u4e00-\\u9fff\\w])${this.escapeRegExp(searchPattern)}(?![\\u4e00-\\u9fff\\w])`, caseSensitive ? 'g' : 'gi');
+        } else {
+          // 英文整词匹配：使用标准词边界
+          regex = new RegExp(`\\b${this.escapeRegExp(searchPattern)}\\b`, caseSensitive ? 'g' : 'gi');
+        }
+
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+          matches.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            text: match[0],
+            context: this.getContext(text, match.index, match[0].length, contextLength)
+          });
+
+          if (maxMatches && matches.length >= maxMatches) break;
+        }
+      } catch (error) {
+        console.warn('Whole word regex failed, falling back to exact search:', error);
+        // 如果正则表达式失败，回退到精确搜索
+        return this.exactSearch(text, pattern, { ...options, wholeWord: false });
       }
     } else {
       // 简单字符串搜索

@@ -17,11 +17,62 @@ export interface OCRResult {
   error?: string;
 }
 
+export interface ContactInfo {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  postalCode?: string;
+}
+
+export interface PartyInfo {
+  companyName?: string;
+  contact?: ContactInfo;
+  legalRepresentative?: string;
+  businessLicense?: string;
+}
+
+export interface VehicleInfo {
+  model?: string;
+  configuration?: string;
+  color?: string;
+  quantity?: number;
+  unitPrice?: string;
+  totalPrice?: string;
+  vinNumbers?: string[];
+}
+
+export interface PriceDetails {
+  unitPrice?: string;
+  totalAmount?: string;
+  taxExclusivePrice?: string;
+  taxAmount?: string;
+  finalTotal?: string;
+  amountInWords?: string;
+  currency?: string;
+}
+
 export interface ContractInfo {
+  // 基本合同信息
+  contractNumber?: string;
+  contractType?: string;
+  signDate?: string;
+  effectiveDate?: string;
+  expiryDate?: string;
+
+  // 甲乙双方信息
   parties: {
-    partyA?: string;
-    partyB?: string;
+    partyA?: PartyInfo;
+    partyB?: PartyInfo;
   };
+
+  // 车辆信息（支持多辆车）
+  vehicles?: VehicleInfo[];
+
+  // 价格详情
+  priceDetails?: PriceDetails;
+
+  // 兼容旧版本的字段
   amounts: string[];
   dates: string[];
   keyTerms: string[];
@@ -132,27 +183,71 @@ export class ZhipuOCRService {
       }
 
       // 构建合同识别的专用提示词
-      const prompt = `请仔细分析这份合同图片，提取关键信息并以JSON格式返回。请只返回一个最准确的结果，不要提供多个候选选项。
+      const prompt = `请仔细分析这份合同图片，提取详细的合同信息并以JSON格式返回。请特别注意表格结构和详细信息的提取。
 
 返回格式：
 {
+  "contractNumber": "合同编号",
+  "contractType": "合同类型",
+  "signDate": "签署日期",
+  "effectiveDate": "生效日期",
   "parties": {
-    "partyA": "甲方完整名称",
-    "partyB": "乙方完整名称"
+    "partyA": {
+      "companyName": "甲方公司完整名称",
+      "contact": {
+        "name": "联系人姓名",
+        "phone": "联系电话",
+        "email": "邮箱地址",
+        "address": "地址",
+        "postalCode": "邮编"
+      }
+    },
+    "partyB": {
+      "companyName": "乙方公司完整名称",
+      "contact": {
+        "name": "联系人姓名",
+        "phone": "联系电话",
+        "email": "邮箱地址",
+        "address": "地址",
+        "postalCode": "邮编"
+      }
+    }
+  },
+  "vehicles": [
+    {
+      "model": "车型",
+      "configuration": "配置",
+      "color": "颜色",
+      "quantity": 数量,
+      "unitPrice": "单价",
+      "totalPrice": "总价",
+      "vinNumbers": ["车架号1", "车架号2"]
+    }
+  ],
+  "priceDetails": {
+    "unitPrice": "单价",
+    "totalAmount": "总金额",
+    "taxExclusivePrice": "不含税价",
+    "taxAmount": "税额",
+    "finalTotal": "最终总计",
+    "amountInWords": "大写金额",
+    "currency": "货币单位"
   },
   "amounts": ["主要金额"],
   "dates": ["主要日期"],
-  "keyTerms": ["最重要的条款"],
+  "keyTerms": ["重要条款"],
   "fullText": "完整的合同文本内容"
 }
 
 识别要求：
-1. 准确识别甲方、乙方的完整名称
-2. 提取最重要的金额信息（优先合同总金额）
-3. 识别最重要的日期（优先签署日期）
-4. 提取最关键的条款信息
-5. 确保信息的准确性和唯一性
-6. 只返回最有把握的信息，避免重复或模糊的内容`;
+1. 准确识别甲乙双方的完整公司名称和联系信息
+2. 提取表格中的车辆信息，包括车型、配置、颜色、数量等
+3. 识别价格详情，包括单价、总价、税额、不含税价等
+4. 提取车架号列表（可能有多个）
+5. 识别联系人姓名、电话、邮编等详细信息
+6. 确保数字格式的准确性（金额、数量、电话号码等）
+7. 如果某些信息不存在或不清楚，请返回null
+8. 特别注意表格结构的识别和数据提取`;
 
       const response = await this.callZhipuAPI(prompt, imageData, mimeType);
       const contractInfo = this.parseContractResponse(response);
@@ -308,10 +403,39 @@ export class ZhipuOCRService {
       const optimizedData = this.optimizeContractData(contractData);
 
       return {
-        parties: optimizedData.parties || {},
-        amounts: Array.isArray(optimizedData.amounts) ? optimizedData.amounts.slice(0, 1) : [], // 只取第一个金额
-        dates: Array.isArray(optimizedData.dates) ? optimizedData.dates.slice(0, 1) : [], // 只取第一个日期
-        keyTerms: Array.isArray(optimizedData.keyTerms) ? optimizedData.keyTerms.slice(0, 3) : [], // 最多3个关键条款
+        // 基本合同信息
+        contractNumber: optimizedData.contractNumber || undefined,
+        contractType: optimizedData.contractType || undefined,
+        signDate: optimizedData.signDate || undefined,
+        effectiveDate: optimizedData.effectiveDate || undefined,
+        expiryDate: optimizedData.expiryDate || undefined,
+
+        // 甲乙双方信息
+        parties: {
+          partyA: optimizedData.parties?.partyA ? {
+            companyName: optimizedData.parties.partyA.companyName || optimizedData.parties.partyA,
+            contact: optimizedData.parties.partyA.contact || {},
+            legalRepresentative: optimizedData.parties.partyA.legalRepresentative || undefined,
+            businessLicense: optimizedData.parties.partyA.businessLicense || undefined
+          } : {},
+          partyB: optimizedData.parties?.partyB ? {
+            companyName: optimizedData.parties.partyB.companyName || optimizedData.parties.partyB,
+            contact: optimizedData.parties.partyB.contact || {},
+            legalRepresentative: optimizedData.parties.partyB.legalRepresentative || undefined,
+            businessLicense: optimizedData.parties.partyB.businessLicense || undefined
+          } : {}
+        },
+
+        // 车辆信息
+        vehicles: Array.isArray(optimizedData.vehicles) ? optimizedData.vehicles : [],
+
+        // 价格详情
+        priceDetails: optimizedData.priceDetails || {},
+
+        // 兼容旧版本的字段
+        amounts: Array.isArray(optimizedData.amounts) ? optimizedData.amounts.slice(0, 3) : [],
+        dates: Array.isArray(optimizedData.dates) ? optimizedData.dates.slice(0, 3) : [],
+        keyTerms: Array.isArray(optimizedData.keyTerms) ? optimizedData.keyTerms.slice(0, 5) : [],
         fullText: optimizedData.fullText || text
       };
 
@@ -319,7 +443,17 @@ export class ZhipuOCRService {
       console.error('[ZhipuOCR] 解析合同响应失败:', error);
       const text = this.extractTextFromResponse(response);
       return {
-        parties: {},
+        contractNumber: undefined,
+        contractType: undefined,
+        signDate: undefined,
+        effectiveDate: undefined,
+        expiryDate: undefined,
+        parties: {
+          partyA: {},
+          partyB: {}
+        },
+        vehicles: [],
+        priceDetails: {},
         amounts: [],
         dates: [],
         keyTerms: [],

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
 import { zhipuOCR, ContractInfo } from '@/lib/zhipu-ocr';
 import { TextReplaceEngine, ReplaceRule } from '@/lib/text-replace';
+import { ContractValidator } from '@/lib/contract-validators';
 import { createSuccessResponse, createErrorResponse, generateRandomString } from '@/lib/utils';
 
 /**
@@ -64,6 +65,18 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
         }
 
         const contractInfo = contractResult.contractInfo;
+
+        // 验证提取的合同信息
+        console.log('[Contract OCR] 开始验证合同信息');
+        const validationResult = ContractValidator.validateContractInfo(contractInfo);
+
+        if (!validationResult.isValid) {
+          console.warn('[Contract OCR] 合同信息验证失败:', validationResult.errors);
+        }
+
+        if (validationResult.warnings.length > 0) {
+          console.warn('[Contract OCR] 合同信息验证警告:', validationResult.warnings);
+        }
 
         let replacementRules: ReplaceRule[] = [];
         let previewResult = null;
@@ -129,12 +142,20 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
             contractInfo,
             replacementRules,
             preview: previewResult,
+            validation: {
+              isValid: validationResult.isValid,
+              errors: validationResult.errors,
+              warnings: validationResult.warnings
+            },
             metadata: {
               fileName: file.name,
               fileSize: file.size,
               fileType: file.type,
-              extractedFields: Object.keys(contractInfo).length,
-              rulesGenerated: replacementRules.length
+              extractedFields: countExtractedFields(contractInfo),
+              rulesGenerated: replacementRules.length,
+              hasVehicleInfo: !!(contractInfo.vehicles && contractInfo.vehicles.length > 0),
+              hasContactInfo: !!(contractInfo.parties.partyA?.contact || contractInfo.parties.partyB?.contact),
+              hasPriceDetails: !!contractInfo.priceDetails
             },
             suggestions: generateSuggestions(contractInfo)
           })
@@ -200,38 +221,138 @@ function generateValueReplacementRules(contractInfo: ContractInfo, originalText:
 
   // 定义字段映射，包含更多的匹配模式
   const fieldMappings = [
+    // 基本甲乙双方信息
     {
-      key: '甲方',
+      key: '甲方公司',
       displayName: '甲方公司',
-      ocrValue: contractInfo.parties.partyA,
+      ocrValue: contractInfo.parties.partyA?.companyName || contractInfo.parties.partyA,
       patterns: ['甲方', '第一方', '采购方', '委托方', '发包方', '买方', '发包人'],
       valueType: 'company'
     },
     {
-      key: '乙方',
+      key: '乙方公司',
       displayName: '乙方公司',
-      ocrValue: contractInfo.parties.partyB,
+      ocrValue: contractInfo.parties.partyB?.companyName || contractInfo.parties.partyB,
       patterns: ['乙方', '第二方', '供应方', '受托方', '承包方', '卖方', '承包人'],
       valueType: 'company'
     },
+
+    // 联系人信息
     {
-      key: '合同金额',
-      displayName: '合同金额',
-      ocrValue: contractInfo.amounts[0],
-      patterns: ['金额', '价格', '费用', '总价', '合同价', '总金额', '合同总价'],
+      key: '甲方联系人',
+      displayName: '甲方联系人',
+      ocrValue: contractInfo.parties.partyA?.contact?.name,
+      patterns: ['甲方联系人', '甲方负责人', '联系人'],
+      valueType: 'contact'
+    },
+    {
+      key: '甲方电话',
+      displayName: '甲方电话',
+      ocrValue: contractInfo.parties.partyA?.contact?.phone,
+      patterns: ['甲方电话', '甲方联系电话', '电话'],
+      valueType: 'phone'
+    },
+    {
+      key: '乙方联系人',
+      displayName: '乙方联系人',
+      ocrValue: contractInfo.parties.partyB?.contact?.name,
+      patterns: ['乙方联系人', '乙方负责人', '联系人'],
+      valueType: 'contact'
+    },
+    {
+      key: '乙方电话',
+      displayName: '乙方电话',
+      ocrValue: contractInfo.parties.partyB?.contact?.phone,
+      patterns: ['乙方电话', '乙方联系电话', '电话'],
+      valueType: 'phone'
+    },
+
+    // 车辆信息
+    {
+      key: '车型',
+      displayName: '车型',
+      ocrValue: contractInfo.vehicles?.[0]?.model,
+      patterns: ['车型', '车辆型号', '型号'],
+      valueType: 'vehicle'
+    },
+    {
+      key: '配置',
+      displayName: '配置',
+      ocrValue: contractInfo.vehicles?.[0]?.configuration,
+      patterns: ['配置', '车辆配置', '规格'],
+      valueType: 'vehicle'
+    },
+    {
+      key: '颜色',
+      displayName: '颜色',
+      ocrValue: contractInfo.vehicles?.[0]?.color,
+      patterns: ['颜色', '外观', '车身颜色'],
+      valueType: 'vehicle'
+    },
+    {
+      key: '数量',
+      displayName: '数量',
+      ocrValue: contractInfo.vehicles?.[0]?.quantity?.toString(),
+      patterns: ['数量', '台数', '辆数'],
+      valueType: 'number'
+    },
+
+    // 价格信息
+    {
+      key: '单价',
+      displayName: '单价',
+      ocrValue: contractInfo.priceDetails?.unitPrice || contractInfo.vehicles?.[0]?.unitPrice,
+      patterns: ['单价', '单车价格', '每台价格'],
       valueType: 'amount'
+    },
+    {
+      key: '总金额',
+      displayName: '总金额',
+      ocrValue: contractInfo.priceDetails?.totalAmount || contractInfo.amounts[0],
+      patterns: ['总金额', '总价', '合同金额', '车款总计'],
+      valueType: 'amount'
+    },
+    {
+      key: '不含税价',
+      displayName: '不含税价',
+      ocrValue: contractInfo.priceDetails?.taxExclusivePrice,
+      patterns: ['不含税价', '税前价格', '未税价'],
+      valueType: 'amount'
+    },
+    {
+      key: '税额',
+      displayName: '税额',
+      ocrValue: contractInfo.priceDetails?.taxAmount,
+      patterns: ['税额', '税费', '增值税'],
+      valueType: 'amount'
+    },
+    {
+      key: '大写金额',
+      displayName: '大写金额',
+      ocrValue: contractInfo.priceDetails?.amountInWords,
+      patterns: ['大写金额', '金额大写', '人民币大写'],
+      valueType: 'text'
+    },
+
+    // 基本合同信息
+    {
+      key: '合同编号',
+      displayName: '合同编号',
+      ocrValue: contractInfo.contractNumber,
+      patterns: ['合同编号', '协议编号', '编号'],
+      valueType: 'text'
     },
     {
       key: '签署日期',
       displayName: '签署日期',
-      ocrValue: contractInfo.dates[0],
-      patterns: ['日期', '签署', '签订', '生效', '签署日期', '签订日期', '生效日期'],
+      ocrValue: contractInfo.signDate || contractInfo.dates[0],
+      patterns: ['签署日期', '签订日期', '生效日期', '日期'],
       valueType: 'date'
     }
   ];
 
   fieldMappings.forEach(mapping => {
-    if (mapping.ocrValue && mapping.ocrValue.trim()) {
+    if (mapping.ocrValue && typeof mapping.ocrValue === 'string' && mapping.ocrValue.trim()) {
       console.log(`[Smart Replace] 处理字段: ${mapping.key} (${mapping.displayName})`);
 
       // 提取OCR识别的纯净值
@@ -243,26 +364,51 @@ function generateValueReplacementRules(contractInfo: ContractInfo, originalText:
         const originalValue = findValueInDocument(originalText, mapping.patterns, pureOcrValue, mapping.valueType);
         console.log(`[Smart Replace] 在原文档中找到的值: "${originalValue}"`);
 
-        if (originalValue && originalValue !== pureOcrValue) {
-          const rule = {
-            id: `${mapping.key}_value_${generateRandomString(8)}`,
-            searchText: originalValue,
-            replaceText: pureOcrValue,
-            fieldType: mapping.displayName, // 添加字段类型标注
-            options: {
-              caseSensitive: false,
-              wholeWord: true, // 使用整词匹配确保精确替换
-              enabled: true,
-              priority: 0
-            }
-          };
+        if (originalValue) {
+          // 检查是否需要替换（即使值相同，也可能需要格式化或标准化）
+          const needsReplacement = originalValue !== pureOcrValue ||
+                                   shouldForceReplacement(originalValue, pureOcrValue, mapping.valueType);
 
-          rules.push(rule);
-          console.log(`[Smart Replace] 生成替换规则: ${mapping.displayName} - "${originalValue}" → "${pureOcrValue}"`);
-        } else if (!originalValue) {
-          console.log(`[Smart Replace] 警告: 未在原文档中找到 ${mapping.displayName} 对应的值`);
+          if (needsReplacement) {
+            const rule = {
+              id: `${mapping.key}_value_${generateRandomString(8)}`,
+              searchText: originalValue,
+              replaceText: pureOcrValue,
+              fieldType: mapping.displayName, // 添加字段类型标注
+              options: {
+                caseSensitive: false,
+                wholeWord: shouldUseWholeWord(originalValue, mapping.valueType), // 动态决定是否使用整词匹配
+                enabled: true,
+                priority: 0
+              }
+            };
+
+            rules.push(rule);
+            console.log(`[Smart Replace] 生成替换规则: ${mapping.displayName} - "${originalValue}" → "${pureOcrValue}"`);
+          } else {
+            console.log(`[Smart Replace] 跳过: ${mapping.displayName} 的值相同且无需格式化`);
+          }
         } else {
-          console.log(`[Smart Replace] 跳过: ${mapping.displayName} 的值相同，无需替换`);
+          console.log(`[Smart Replace] 警告: 未在原文档中找到 ${mapping.displayName} 对应的值`);
+
+          // 尝试直接使用OCR值进行替换（适用于新增字段）
+          if (shouldCreateDirectRule(pureOcrValue, mapping.valueType)) {
+            const rule = {
+              id: `${mapping.key}_direct_${generateRandomString(8)}`,
+              searchText: `${mapping.patterns[0]}：`, // 使用第一个模式作为搜索目标
+              replaceText: `${mapping.patterns[0]}：${pureOcrValue}`,
+              fieldType: mapping.displayName,
+              options: {
+                caseSensitive: false,
+                wholeWord: false,
+                enabled: true,
+                priority: 1 // 较低优先级
+              }
+            };
+
+            rules.push(rule);
+            console.log(`[Smart Replace] 生成直接替换规则: ${mapping.displayName} - "${rule.searchText}" → "${rule.replaceText}"`);
+          }
         }
       } else {
         console.log(`[Smart Replace] 警告: 无法从OCR结果中提取 ${mapping.displayName} 的纯净值`);
@@ -271,6 +417,41 @@ function generateValueReplacementRules(contractInfo: ContractInfo, originalText:
       console.log(`[Smart Replace] 跳过: ${mapping.displayName} 的OCR值为空`);
     }
   });
+
+  // 特殊处理车架号（可能有多个）
+  if (contractInfo.vehicles && contractInfo.vehicles.length > 0) {
+    contractInfo.vehicles.forEach((vehicle, vehicleIndex) => {
+      if (vehicle.vinNumbers && Array.isArray(vehicle.vinNumbers)) {
+        vehicle.vinNumbers.forEach((vin, vinIndex) => {
+          if (vin && vin.trim()) {
+            console.log(`[Smart Replace] 处理车架号 ${vehicleIndex + 1}-${vinIndex + 1}: ${vin}`);
+
+            // 查找原文档中的车架号
+            const vinPatterns = ['车架号', 'VIN', '车辆识别代号', '底盘号'];
+            const originalVin = findValueInDocument(originalText, vinPatterns, vin, 'vin');
+
+            if (originalVin && originalVin !== vin) {
+              const rule = {
+                id: `车架号_${vehicleIndex}_${vinIndex}_${generateRandomString(8)}`,
+                searchText: originalVin,
+                replaceText: vin,
+                fieldType: `车架号 ${vehicleIndex + 1}-${vinIndex + 1}`,
+                options: {
+                  caseSensitive: false,
+                  wholeWord: true,
+                  enabled: true,
+                  priority: 0
+                }
+              };
+
+              rules.push(rule);
+              console.log(`[Smart Replace] 生成车架号替换规则: "${originalVin}" → "${vin}"`);
+            }
+          }
+        });
+      }
+    });
+  }
 
   console.log(`[Smart Replace] 共生成 ${rules.length} 条替换规则`);
   return rules;
@@ -287,12 +468,12 @@ function generatePatternReplacementRules(contractInfo: ContractInfo): ReplaceRul
     {
       key: '甲方',
       searchPatterns: ['甲方：', '甲方:', '甲方 ', '第一方：', '第一方:'],
-      value: contractInfo.parties.partyA
+      value: typeof contractInfo.parties.partyA === 'string' ? contractInfo.parties.partyA : contractInfo.parties.partyA?.companyName
     },
     {
       key: '乙方',
       searchPatterns: ['乙方：', '乙方:', '乙方 ', '第二方：', '第二方:'],
-      value: contractInfo.parties.partyB
+      value: typeof contractInfo.parties.partyB === 'string' ? contractInfo.parties.partyB : contractInfo.parties.partyB?.companyName
     },
     {
       key: '合同金额',
@@ -322,7 +503,7 @@ function generatePatternReplacementRules(contractInfo: ContractInfo): ReplaceRul
   ];
 
   fieldMappings.forEach(mapping => {
-    if (mapping.value && mapping.value.trim()) {
+    if (mapping.value && typeof mapping.value === 'string' && mapping.value.trim()) {
       // 只为每个字段生成一条最佳的替换规则
       // 选择第一个搜索模式作为最佳模式
       const bestPattern = mapping.searchPatterns[0];
@@ -503,7 +684,7 @@ function isValidFieldValue(foundValue: string, ocrValue: string, valueType?: str
   if (!foundValue || foundValue.length < 2) return false;
 
   // 基本过滤条件
-  if (foundValue === ocrValue) return false; // 相同值无需替换
+  // 注意：不再过滤相同值，因为可能需要格式化或标准化
   if (foundValue.includes('：') || foundValue.includes(':')) return false; // 包含标签符号
   if (foundValue.length > 200) return false; // 过长的文本
 
@@ -871,16 +1052,140 @@ function generateSuggestions(contractInfo: ContractInfo): string[] {
 }
 
 /**
+ * 判断是否应该强制替换（即使值相同）
+ */
+function shouldForceReplacement(originalValue: string, ocrValue: string, valueType?: string): boolean {
+  // 检查格式差异
+  if (originalValue.trim() !== ocrValue.trim()) return true;
+
+  // 检查特殊字符差异
+  const cleanOriginal = originalValue.replace(/[\s\-\(\)]/g, '');
+  const cleanOcr = ocrValue.replace(/[\s\-\(\)]/g, '');
+  if (cleanOriginal !== cleanOcr) return true;
+
+  // 根据字段类型检查特定格式要求
+  switch (valueType) {
+    case 'phone':
+      // 电话号码标准化
+      return normalizePhone(originalValue) !== normalizePhone(ocrValue);
+    case 'amount':
+      // 金额格式标准化
+      return normalizeAmount(originalValue) !== normalizeAmount(ocrValue);
+    default:
+      return false;
+  }
+}
+
+/**
+ * 判断是否应该使用整词匹配
+ */
+function shouldUseWholeWord(searchText: string, valueType?: string): boolean {
+  // 对于包含中文的文本，整词匹配可能不适用
+  if (/[\u4e00-\u9fff]/.test(searchText)) {
+    return false;
+  }
+
+  // 对于短文本或特殊字符，不使用整词匹配
+  if (searchText.length < 3 || /[^\w\s]/.test(searchText)) {
+    return false;
+  }
+
+  // 根据字段类型决定
+  switch (valueType) {
+    case 'company':
+    case 'contact':
+      return false; // 公司名称和联系人可能包含特殊格式
+    case 'phone':
+    case 'amount':
+      return true; // 电话和金额适合整词匹配
+    default:
+      return false;
+  }
+}
+
+/**
+ * 判断是否应该创建直接替换规则
+ */
+function shouldCreateDirectRule(ocrValue: string, valueType?: string): boolean {
+  if (!ocrValue || ocrValue.length < 2) return false;
+
+  // 只为重要字段创建直接规则
+  switch (valueType) {
+    case 'company':
+    case 'contact':
+    case 'phone':
+    case 'amount':
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * 标准化电话号码
+ */
+function normalizePhone(phone: string): string {
+  return phone.replace(/[\s\-\(\)]/g, '');
+}
+
+/**
+ * 标准化金额
+ */
+function normalizeAmount(amount: string): string {
+  return amount.replace(/[,\s]/g, '').replace(/[¥￥\$]/g, '');
+}
+
+/**
+ * 计算提取的字段数量
+ */
+function countExtractedFields(contractInfo: ContractInfo): number {
+  let count = 0;
+
+  // 基本信息
+  if (contractInfo.contractNumber) count++;
+  if (contractInfo.signDate) count++;
+
+  // 甲方信息
+  if (contractInfo.parties.partyA?.companyName) count++;
+  if (contractInfo.parties.partyA?.contact?.name) count++;
+  if (contractInfo.parties.partyA?.contact?.phone) count++;
+
+  // 乙方信息
+  if (contractInfo.parties.partyB?.companyName) count++;
+  if (contractInfo.parties.partyB?.contact?.name) count++;
+  if (contractInfo.parties.partyB?.contact?.phone) count++;
+
+  // 车辆信息
+  if (contractInfo.vehicles && contractInfo.vehicles.length > 0) {
+    contractInfo.vehicles.forEach(vehicle => {
+      if (vehicle.model) count++;
+      if (vehicle.configuration) count++;
+      if (vehicle.color) count++;
+      if (vehicle.quantity) count++;
+      if (vehicle.vinNumbers && vehicle.vinNumbers.length > 0) count += vehicle.vinNumbers.length;
+    });
+  }
+
+  // 价格信息
+  if (contractInfo.priceDetails?.totalAmount) count++;
+  if (contractInfo.priceDetails?.unitPrice) count++;
+  if (contractInfo.priceDetails?.taxAmount) count++;
+  if (contractInfo.priceDetails?.amountInWords) count++;
+
+  return count;
+}
+
+/**
  * 记录合同提取使用情况
  */
 async function recordContractExtractionUsage(
-  userId: string, 
-  fileSize: number, 
+  userId: string,
+  fileSize: number,
   contractInfo: ContractInfo
 ): Promise<void> {
   try {
     // TODO: 实现使用情况记录
-    const extractedFields = Object.keys(contractInfo).length;
+    const extractedFields = countExtractedFields(contractInfo);
     console.log(`Contract extraction for user ${userId}: ${extractedFields} fields extracted from ${fileSize} bytes`);
   } catch (error) {
     console.error('Error recording contract extraction usage:', error);

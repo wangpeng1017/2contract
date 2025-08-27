@@ -79,6 +79,17 @@ export class TextReplaceEngine {
         result.matches = TextSearchEngine.exactSearch(text, rule.searchText, searchOptions);
       }
 
+      // 如果没有找到匹配且启用了整词匹配，尝试不使用整词匹配
+      if (result.matches.length === 0 && rule.options?.wholeWord) {
+        console.log(`[TextReplace] 整词匹配失败，尝试普通匹配: "${rule.searchText}"`);
+        const fallbackOptions = { ...searchOptions, wholeWord: false };
+        result.matches = TextSearchEngine.exactSearch(text, rule.searchText, fallbackOptions);
+
+        if (result.matches.length > 0) {
+          console.log(`[TextReplace] 普通匹配成功，找到 ${result.matches.length} 个匹配`);
+        }
+      }
+
       result.replacedCount = result.matches.length;
       result.success = true;
     } catch (error) {
