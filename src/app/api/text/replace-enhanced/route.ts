@@ -8,30 +8,42 @@ import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
  * 增强的文本替换API，包含诊断功能
  */
 export async function POST(request: NextRequest) {
+  // 检查是否为测试模式（开发环境允许无认证测试）
+  const isTestMode = process.env.NODE_ENV === 'development';
+
+  if (isTestMode) {
+    return handleEnhancedReplaceRequest(request, { sub: 'test-user' });
+  }
+
   return withAuth(request, async (req, user) => {
-    try {
-      const body = await req.json();
-      const { 
-        text, 
-        rules, 
-        options = {},
-        enableDiagnostics = true,
-        autoFix = false 
-      } = body;
+    return handleEnhancedReplaceRequest(req, user);
+  });
+}
 
-      if (!text || typeof text !== 'string') {
-        return NextResponse.json(
-          createErrorResponse('INVALID_TEXT', '文本内容不能为空'),
-          { status: 400 }
-        );
-      }
+async function handleEnhancedReplaceRequest(req: NextRequest, user: any) {
+  try {
+    const body = await req.json();
+    const {
+      text,
+      rules,
+      options = {},
+      enableDiagnostics = true,
+      autoFix = false
+    } = body;
 
-      if (!rules || !Array.isArray(rules) || rules.length === 0) {
-        return NextResponse.json(
-          createErrorResponse('INVALID_RULES', '替换规则不能为空'),
-          { status: 400 }
-        );
-      }
+    if (!text || typeof text !== 'string') {
+      return NextResponse.json(
+        createErrorResponse('INVALID_TEXT', '文本内容不能为空'),
+        { status: 400 }
+      );
+    }
+
+    if (!rules || !Array.isArray(rules) || rules.length === 0) {
+      return NextResponse.json(
+        createErrorResponse('INVALID_RULES', '替换规则不能为空'),
+        { status: 400 }
+      );
+    }
 
       console.log(`[Enhanced Replace] 开始处理 ${rules.length} 条替换规则`);
       console.log(`[Enhanced Replace] 文本长度: ${text.length} 字符`);
@@ -150,18 +162,17 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(createSuccessResponse(response));
 
-    } catch (error) {
-      console.error('[Enhanced Replace] 处理失败:', error);
-      
-      return NextResponse.json(
-        createErrorResponse(
-          'REPLACE_ERROR', 
-          `文本替换失败: ${error instanceof Error ? error.message : '未知错误'}`
-        ),
-        { status: 500 }
-      );
-    }
-  });
+  } catch (error) {
+    console.error('[Enhanced Replace] 处理失败:', error);
+
+    return NextResponse.json(
+      createErrorResponse(
+        'REPLACE_ERROR',
+        `文本替换失败: ${error instanceof Error ? error.message : '未知错误'}`
+      ),
+      { status: 500 }
+    );
+  }
 }
 
 /**
