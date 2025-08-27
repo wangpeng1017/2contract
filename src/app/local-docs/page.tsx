@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, Suspense } from 'react';
-import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen } from 'lucide-react';
+import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen, FileDown } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AdvancedFormField } from '@/components/form/AdvancedFormField';
@@ -55,6 +55,7 @@ function LocalDocsContent() {
   const [generatedDocUrl, setGeneratedDocUrl] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [exportFormat, setExportFormat] = useState<'docx' | 'pdf'>('docx');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -251,8 +252,11 @@ function LocalDocsContent() {
     }
 
     setError(null);
+    setFieldErrors({});
     setIsProcessing(true);
-    setProcessingStatus('正在生成文档...');
+
+    const isGeneratingPDF = exportFormat === 'pdf';
+    setProcessingStatus(isGeneratingPDF ? '正在生成PDF文档...' : '正在生成Word文档...');
 
     try {
       // 创建FormData对象
@@ -264,15 +268,28 @@ function LocalDocsContent() {
 
       setProcessingStatus('正在填充数据...');
 
+      // 根据导出格式选择API端点
+      const apiEndpoint = isGeneratingPDF ? '/api/local-docs/export-pdf' : '/api/local-docs/generate-document';
+
+      // 如果是PDF导出，添加PDF选项
+      if (isGeneratingPDF) {
+        const pdfOptions = {
+          format: 'A4',
+          orientation: 'portrait',
+          printBackground: true
+        };
+        formDataObj.append('options', JSON.stringify(pdfOptions));
+      }
+
       // 调用后端API生成文档
-      const response = await fetch('/api/local-docs/generate-document', {
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         body: formDataObj,
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorMessage = '文档生成失败';
+        let errorMessage = isGeneratingPDF ? 'PDF生成失败' : '文档生成失败';
         try {
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.message || errorMessage;
@@ -289,13 +306,14 @@ function LocalDocsContent() {
       const url = window.URL.createObjectURL(blob);
       setGeneratedDocUrl(url);
 
-      setProcessingStatus('文档生成成功！');
+      const successMessage = isGeneratingPDF ? 'PDF文档生成成功！' : '文档生成成功！';
+      setProcessingStatus(successMessage);
       setTimeout(() => {
         setCurrentStep(3);
         setProcessingStatus('');
       }, 1000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '文档生成失败');
+      setError(err instanceof Error ? err.message : (exportFormat === 'pdf' ? 'PDF生成失败' : '文档生成失败'));
       setProcessingStatus('');
     } finally {
       setIsProcessing(false);
@@ -526,6 +544,43 @@ function LocalDocsContent() {
               ))}
             </div>
 
+            {/* 导出格式选择 */}
+            <div className="card p-4 bg-gray-50">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">导出格式</h3>
+              <div className="flex space-x-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="docx"
+                    checked={exportFormat === 'docx'}
+                    onChange={(e) => setExportFormat(e.target.value as 'docx' | 'pdf')}
+                    className="mr-2 text-blue-600 focus:ring-blue-500"
+                  />
+                  <FileText size={16} className="mr-1" />
+                  Word文档 (.docx)
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="pdf"
+                    checked={exportFormat === 'pdf'}
+                    onChange={(e) => setExportFormat(e.target.value as 'docx' | 'pdf')}
+                    className="mr-2 text-blue-600 focus:ring-blue-500"
+                  />
+                  <FileDown size={16} className="mr-1" />
+                  PDF文档 (.pdf)
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {exportFormat === 'pdf'
+                  ? 'PDF格式适合打印和分享，文件更小且不易编辑'
+                  : 'Word格式可以继续编辑和修改内容'
+                }
+              </p>
+            </div>
+
             <div className="flex justify-between items-center pt-6">
               <button
                 type="button"
@@ -566,19 +621,19 @@ function LocalDocsContent() {
               <CheckCircle size={32} className="text-green-600" />
             </div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              文档生成成功
+              {exportFormat === 'pdf' ? 'PDF文档生成成功' : '文档生成成功'}
             </h2>
             <p className="text-gray-600 mb-8">
-              您的文档已经生成完成，可以下载使用了
+              您的{exportFormat === 'pdf' ? 'PDF' : 'Word'}文档已经生成完成，可以下载使用了
             </p>
-            
+
             <div className="space-y-4">
               <button
                 onClick={handleDownload}
                 className="btn-primary px-8 py-3 text-lg"
               >
                 <Download size={20} className="mr-2" />
-                下载文档
+                下载{exportFormat === 'pdf' ? 'PDF' : 'Word'}文档
               </button>
               
               <div className="flex justify-center space-x-4">
