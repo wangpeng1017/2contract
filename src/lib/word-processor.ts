@@ -150,9 +150,9 @@ export class WordProcessor {
 
       // 匹配 {{placeholder}} 格式的占位符
       // 考虑到Word可能会将占位符分割到多个XML节点中，我们需要更复杂的匹配
+      // 修复：只使用双花括号格式，避免重复识别
       const patterns = [
-        /\{\{([^}]+)\}\}/g,  // 标准格式
-        /\{([^}]+)\}/g,      // 单花括号格式
+        /\{\{([^}]+)\}\}/g,  // 标准双花括号格式
       ];
 
       patterns.forEach(pattern => {
