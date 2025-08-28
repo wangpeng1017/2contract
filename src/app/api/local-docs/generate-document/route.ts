@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/utils';
 import { WordProcessor } from '@/lib/word-processor';
 import { encodeDocumentFilename, encodeHeaderValues } from '@/lib/filename-encoder';
+import JSZip from 'jszip';
 
 interface TableData {
   [key: string]: string | number;
@@ -49,6 +50,17 @@ export async function POST(request: NextRequest) {
     console.log(`[Local Docs] 填充数据字段:`, Object.keys(data));
     console.log(`[Local Docs] 填充数据详情:`, JSON.stringify(data, null, 2));
 
+    // 生产环境详细调试信息
+    console.log(`[Production Debug] 环境信息:`, {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString(),
+      templateSize: file.size,
+      dataFieldCount: Object.keys(data).length
+    });
+
     // 获取模板文件buffer
     const templateBuffer = await file.arrayBuffer();
 
@@ -56,7 +68,13 @@ export async function POST(request: NextRequest) {
     const sanitizedData = WordProcessor.sanitizeData(data);
 
     // 使用真实的Word处理引擎生成文档
+    console.log(`[Production Debug] 开始调用WordProcessor.generateDocument`);
     const result = await WordProcessor.generateDocument(templateBuffer, sanitizedData, file.name);
+    console.log(`[Production Debug] 文档生成完成，大小:`, result.documentBuffer.byteLength);
+
+    // 生产环境验证生成的文档
+    const verification = await verifyDocumentGeneration(result.documentBuffer, sanitizedData);
+    console.log(`[Production Debug] 文档验证结果:`, verification);
 
     console.log(`[Local Docs] 文档生成完成，大小: ${result.documentBuffer.byteLength} bytes`);
 
@@ -99,4 +117,55 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * 验证生成的文档中的字段替换情况
+ */
+async function verifyDocumentGeneration(documentBuffer: ArrayBuffer, originalData: Record<string, any>) {
+  try {
+    const zip = new JSZip();
+    const zipContent = await zip.loadAsync(documentBuffer);
 
+    const documentXmlFile = zipContent.file('word/document.xml');
+    if (!documentXmlFile) {
+      return { success: false, error: '无法找到document.xml文件' };
+    }
+
+    const documentXml = await documentXmlFile.async('text');
+
+    // 查找剩余的占位符
+    const remainingPlaceholders = documentXml.match(/\{\{([^}]+)\}\}/g) || [];
+
+    // 检查数据是否存在于文档中
+    let replacedCount = 0;
+    const totalFields = Object.keys(originalData).length;
+
+    for (const [key, value] of Object.entries(originalData)) {
+      const stringValue = String(value || '');
+      const placeholderExists = documentXml.includes(`{{${key}}}`);
+      const valueExists = stringValue && documentXml.includes(stringValue);
+
+      if (!placeholderExists && valueExists) {
+        replacedCount++;
+      }
+    }
+
+    const replacementRate = totalFields > 0 ? (replacedCount / totalFields) * 100 : 100;
+
+    return {
+      success: remainingPlaceholders.length === 0,
+      remainingPlaceholders: remainingPlaceholders,
+      remainingCount: remainingPlaceholders.length,
+      replacedCount: replacedCount,
+      totalFields: totalFields,
+      replacementRate: replacementRate,
+      documentXmlLength: documentXml.length
+    };
+
+  } catch (error) {
+    console.error('[Production Debug] 文档验证失败:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '验证过程出错'
+    };
+  }
+}
