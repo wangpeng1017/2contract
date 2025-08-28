@@ -633,8 +633,9 @@ export class WordProcessor {
   ): Promise<GenerationResult> {
     try {
       console.log(`[WordProcessor] 开始生成文档: ${templateName}`);
-      console.log(`[WordProcessor] 填充数据:`, Object.keys(data));
-      
+      console.log(`[WordProcessor] 填充数据字段:`, Object.keys(data));
+      console.log(`[WordProcessor] 填充数据详情:`, JSON.stringify(data, null, 2));
+
       // 使用docx-templates生成文档
       const documentBuffer = await createReport({
         template: new Uint8Array(templateBuffer),
@@ -711,22 +712,73 @@ export class WordProcessor {
    */
   static sanitizeData(data: Record<string, any>): Record<string, any> {
     const sanitized: Record<string, any> = {};
-    
+
+    console.log('[WordProcessor] 开始清理数据:', Object.keys(data));
+
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
-        // 基本的数据清理
+        console.log(`[WordProcessor] 处理字段 ${key}:`, typeof value, value);
+
+        // 处理不同类型的数据
         if (typeof value === 'string') {
           sanitized[key] = value.trim().substring(0, 1000); // 限制长度
         } else if (typeof value === 'number') {
           sanitized[key] = isNaN(value) ? 0 : value;
         } else if (typeof value === 'boolean') {
           sanitized[key] = value ? '是' : '否';
+        } else if (Array.isArray(value)) {
+          // 处理数组数据（如表格数据）
+          if (value.length > 0 && typeof value[0] === 'object') {
+            // 表格数据：数组中包含对象
+            sanitized[key] = value.map((item: any) => {
+              if (typeof item === 'object' && item !== null) {
+                const cleanItem: Record<string, any> = {};
+                Object.entries(item).forEach(([itemKey, itemValue]) => {
+                  if (itemValue !== undefined && itemValue !== null) {
+                    if (typeof itemValue === 'string') {
+                      cleanItem[itemKey] = itemValue.trim().substring(0, 500);
+                    } else if (typeof itemValue === 'number') {
+                      cleanItem[itemKey] = isNaN(itemValue) ? 0 : itemValue;
+                    } else {
+                      cleanItem[itemKey] = String(itemValue).trim().substring(0, 500);
+                    }
+                  }
+                });
+                return cleanItem;
+              }
+              return item;
+            });
+          } else {
+            // 简单数组（字符串数组等）
+            sanitized[key] = value.map((item: any) =>
+              typeof item === 'string' ? item.trim().substring(0, 500) : String(item).trim().substring(0, 500)
+            );
+          }
+        } else if (typeof value === 'object') {
+          // 处理对象数据
+          const cleanObject: Record<string, any> = {};
+          Object.entries(value).forEach(([objKey, objValue]) => {
+            if (objValue !== undefined && objValue !== null) {
+              if (typeof objValue === 'string') {
+                cleanObject[objKey] = objValue.trim().substring(0, 500);
+              } else if (typeof objValue === 'number') {
+                cleanObject[objKey] = isNaN(objValue) ? 0 : objValue;
+              } else {
+                cleanObject[objKey] = String(objValue).trim().substring(0, 500);
+              }
+            }
+          });
+          sanitized[key] = cleanObject;
         } else {
+          // 其他类型转换为字符串
           sanitized[key] = String(value).trim().substring(0, 1000);
         }
+
+        console.log(`[WordProcessor] 字段 ${key} 清理后:`, sanitized[key]);
       }
     });
-    
+
+    console.log('[WordProcessor] 数据清理完成:', Object.keys(sanitized));
     return sanitized;
   }
 }

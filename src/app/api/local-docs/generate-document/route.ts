@@ -3,8 +3,12 @@ import { createErrorResponse } from '@/lib/utils';
 import { WordProcessor } from '@/lib/word-processor';
 import { encodeDocumentFilename, encodeHeaderValues } from '@/lib/filename-encoder';
 
-interface FormData {
-  [key: string]: string;
+interface TableData {
+  [key: string]: string | number;
+}
+
+interface FormDataValue {
+  [key: string]: string | number | boolean | TableData[] | string[];
 }
 
 /**
@@ -31,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let data: FormData;
+    let data: FormDataValue;
     try {
       data = JSON.parse(dataStr);
     } catch (error) {
@@ -42,7 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Local Docs] 开始生成文档: ${file.name}`);
-    console.log(`[Local Docs] 填充数据:`, Object.keys(data));
+    console.log(`[Local Docs] 填充数据字段:`, Object.keys(data));
+    console.log(`[Local Docs] 填充数据详情:`, JSON.stringify(data, null, 2));
 
     // 获取模板文件buffer
     const templateBuffer = await file.arrayBuffer();
