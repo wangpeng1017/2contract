@@ -38,6 +38,33 @@ export interface FieldMappingResponse {
   suggestions?: string[];
 }
 
+export interface ClauseGenerationRequest {
+  requirement: string;
+  documentType: string;
+  context?: string;
+  existingClauses?: string[];
+  legalJurisdiction?: string;
+  companyInfo?: {
+    name: string;
+    type: string;
+    industry?: string;
+  };
+}
+
+export interface ClauseGenerationResponse {
+  clauses: Array<{
+    title: string;
+    content: string;
+    type: string;
+    confidence: number;
+    legalBasis?: string;
+    risks?: string[];
+    suggestions?: string[];
+  }>;
+  warnings?: string[];
+  recommendations?: string[];
+}
+
 /**
  * Gemini AI客户端类
  */
@@ -368,6 +395,167 @@ JSON结果：`;
         error: error instanceof Error ? error.message : '验证优化失败'
       };
     }
+  }
+
+  /**
+   * 智能条款生成
+   */
+  async generateClauses(request: ClauseGenerationRequest): Promise<AIResponse> {
+    if (!this.isConfigured || !this.model) {
+      return {
+        success: false,
+        error: 'AI服务未配置或不可用'
+      };
+    }
+
+    try {
+      console.log('[GeminiClient] 开始生成智能条款');
+
+      const prompt = this.buildClauseGenerationPrompt(request);
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+
+      console.log('[GeminiClient] 条款生成AI响应:', text);
+
+      // 解析AI响应
+      const clauseResponse = this.parseClauseGenerationResponse(text);
+
+      return {
+        success: true,
+        data: clauseResponse
+      };
+
+    } catch (error) {
+      console.error('[GeminiClient] 智能条款生成失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '智能条款生成失败'
+      };
+    }
+  }
+
+  /**
+   * 构建条款生成的提示词
+   */
+  private buildClauseGenerationPrompt(request: ClauseGenerationRequest): string {
+    const { requirement, documentType, context, existingClauses, legalJurisdiction, companyInfo } = request;
+
+    const prompt = `你是一位专业的法律顾问和合同专家，需要根据用户需求生成专业的法律条款。
+
+用户需求：
+"${requirement}"
+
+文档类型：${documentType}
+法律管辖区：${legalJurisdiction || '中华人民共和国'}
+
+${companyInfo ? `公司信息：
+- 公司名称：${companyInfo.name}
+- 公司类型：${companyInfo.type}
+${companyInfo.industry ? `- 行业：${companyInfo.industry}` : ''}
+` : ''}
+
+${context ? `上下文信息：
+${context}
+` : ''}
+
+${existingClauses && existingClauses.length > 0 ? `现有条款：
+${existingClauses.map((clause, index) => `${index + 1}. ${clause}`).join('\n')}
+` : ''}
+
+请根据以上信息生成专业的法律条款。返回JSON格式的结果：
+
+{
+  "clauses": [
+    {
+      "title": "条款标题",
+      "content": "详细的条款内容",
+      "type": "条款类型（如：责任条款、违约条款、保密条款等）",
+      "confidence": 0.95,
+      "legalBasis": "法律依据或参考",
+      "risks": ["潜在风险1", "潜在风险2"],
+      "suggestions": ["优化建议1", "优化建议2"]
+    }
+  ],
+  "warnings": ["重要提醒或警告"],
+  "recommendations": ["总体建议"]
+}
+
+要求：
+1. 条款内容必须专业、准确、符合法律规范
+2. 使用清晰、明确的法律语言
+3. 考虑实际执行的可操作性
+4. 标注潜在的法律风险
+5. 提供优化建议
+6. 确保条款的完整性和逻辑性
+7. 返回有效的JSON格式，不要包含其他文本
+
+JSON结果：`;
+
+    return prompt;
+  }
+
+  /**
+   * 解析条款生成响应
+   */
+  private parseClauseGenerationResponse(aiResponse: string): ClauseGenerationResponse {
+    try {
+      // 尝试提取JSON部分
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('AI响应中未找到有效的JSON格式');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // 验证和清理响应
+      const clauses = (parsed.clauses || []).map((clause: any) => ({
+        title: clause.title || '未命名条款',
+        content: clause.content || '',
+        type: clause.type || '通用条款',
+        confidence: Math.min(Math.max(clause.confidence || 0.5, 0), 1),
+        legalBasis: clause.legalBasis || '',
+        risks: Array.isArray(clause.risks) ? clause.risks : [],
+        suggestions: Array.isArray(clause.suggestions) ? clause.suggestions : []
+      }));
+
+      return {
+        clauses,
+        warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+        recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : []
+      };
+
+    } catch (error) {
+      console.error('[GeminiClient] 解析条款生成响应失败:', error);
+
+      // 降级处理：尝试从文本中提取基本信息
+      return this.fallbackClauseGeneration(aiResponse);
+    }
+  }
+
+  /**
+   * 降级处理：从文本中提取基本条款信息
+   */
+  private fallbackClauseGeneration(text: string): ClauseGenerationResponse {
+    // 简单的文本解析，提取可能的条款内容
+    const paragraphs = text.split('\n\n').filter(p => p.trim().length > 20);
+
+    const clauses = paragraphs.slice(0, 3).map((paragraph, index) => ({
+      title: `条款 ${index + 1}`,
+      content: paragraph.trim(),
+      type: '通用条款',
+      confidence: 0.3,
+      legalBasis: '',
+      risks: [],
+      suggestions: ['请人工审核此条款的准确性和完整性']
+    }));
+
+    return {
+      clauses,
+      warnings: ['AI解析失败，条款内容可能不完整，请仔细审核'],
+      recommendations: ['建议咨询专业法律顾问进行审核和完善']
+    };
   }
 
   /**

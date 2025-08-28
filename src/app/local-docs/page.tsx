@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, Suspense } from 'react';
-import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen, FileDown, Sparkles } from 'lucide-react';
+import { Upload, FileText, Download, ArrowLeft, CheckCircle, AlertCircle, BookOpen, FileDown, Sparkles, Scale } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AdvancedFormField } from '@/components/form/AdvancedFormField';
@@ -482,6 +482,40 @@ function LocalDocsContent() {
                   <BookOpen size={16} className="mr-2" />
                   浏览模板库
                 </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* AI功能快捷入口 */}
+          <div className="card p-6 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <Scale size={20} className="mr-2 text-purple-600" />
+              AI智能功能
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <Link
+                href="/local-docs/ai-clauses"
+                className="block p-4 bg-white rounded-lg border border-purple-200 hover:border-purple-300 transition-colors group"
+              >
+                <div className="flex items-center mb-2">
+                  <Scale size={16} className="text-purple-600 mr-2" />
+                  <span className="font-medium text-gray-900 group-hover:text-purple-600">智能条款生成</span>
+                </div>
+                <p className="text-sm text-gray-600">
+                  基于AI技术生成专业法律条款，支持保密、责任、争议解决等多种类型
+                </p>
+              </Link>
+
+              <div className="p-4 bg-white rounded-lg border border-gray-200 opacity-75">
+                <div className="flex items-center mb-2">
+                  <FileText size={16} className="text-gray-400 mr-2" />
+                  <span className="font-medium text-gray-500">文档模板化</span>
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded ml-2">即将推出</span>
+                </div>
+                <p className="text-sm text-gray-500">
+                  自动将普通文档转换为可复用模板，识别变量并生成占位符
+                </p>
               </div>
             </div>
           </div>
