@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/utils';
 import { WordProcessor } from '@/lib/word-processor';
-import { encodeDocumentFilename } from '@/lib/filename-encoder';
+import { encodeDocumentFilename, encodeHeaderValues } from '@/lib/filename-encoder';
 
 interface FormData {
   [key: string]: string;
@@ -64,18 +64,21 @@ export async function POST(request: NextRequest) {
     // 使用工具函数编码文件名
     const encodedFilename = encodeDocumentFilename(generatedFileName);
 
+    // 准备响应头（确保所有值都是ASCII安全的）
+    const responseHeaders = encodeHeaderValues({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': encodedFilename.contentDisposition,
+      'Content-Length': result.documentBuffer.byteLength.toString(),
+      'X-Generated-At': result.metadata.generatedAt,
+      'X-Filled-Fields': result.metadata.filledFields.join(','),
+      'X-Original-Filename': originalFileName,
+      'X-Safe-Filename': encodedFilename.safeFilename,
+    });
+
     // 返回生成的文档
     return new NextResponse(result.documentBuffer, {
       status: 200,
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': encodedFilename.contentDisposition,
-        'Content-Length': result.documentBuffer.byteLength.toString(),
-        'X-Generated-At': result.metadata.generatedAt,
-        'X-Filled-Fields': result.metadata.filledFields.join(','),
-        'X-Original-Filename': encodeURIComponent(originalFileName),
-        'X-Safe-Filename': encodedFilename.safeFilename,
-      },
+      headers: responseHeaders,
     });
 
   } catch (error) {

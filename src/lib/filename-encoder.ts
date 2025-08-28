@@ -127,8 +127,39 @@ export function isContentDispositionSafe(contentDisposition: string): boolean {
 }
 
 /**
+ * 安全编码HTTP响应头值
+ * 确保所有响应头值都是ASCII安全的
+ *
+ * @param value 响应头值
+ * @returns 编码后的安全值
+ */
+export function encodeHeaderValue(value: string): string {
+  // 检查是否包含非ASCII字符
+  if (hasNonAsciiChars(value)) {
+    return encodeURIComponent(value);
+  }
+  return value;
+}
+
+/**
+ * 安全编码多个响应头值
+ *
+ * @param headers 响应头对象
+ * @returns 编码后的响应头对象
+ */
+export function encodeHeaderValues(headers: Record<string, string>): Record<string, string> {
+  const encodedHeaders: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(headers)) {
+    encodedHeaders[key] = encodeHeaderValue(value);
+  }
+
+  return encodedHeaders;
+}
+
+/**
  * 创建带有正确编码的HTTP响应头
- * 
+ *
  * @param originalFilename 原始文件名
  * @param contentType MIME类型
  * @param additionalHeaders 额外的响应头
@@ -140,11 +171,14 @@ export function createFileResponseHeaders(
   additionalHeaders: Record<string, string> = {}
 ): Record<string, string> {
   const encoded = encodeFilenameForHttp(originalFilename);
-  
-  return {
+
+  const headers = {
     'Content-Type': contentType,
     'Content-Disposition': encoded.contentDisposition,
     'X-Original-Filename': encoded.encodedOriginal,
     ...additionalHeaders
   };
+
+  // 确保所有响应头值都是ASCII安全的
+  return encodeHeaderValues(headers);
 }

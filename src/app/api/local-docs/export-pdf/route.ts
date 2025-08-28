@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/utils';
 import { PDFConverter, PDFConversionOptions } from '@/lib/pdf-converter';
-import { encodePdfFilename } from '@/lib/filename-encoder';
+import { encodePdfFilename, encodeHeaderValues } from '@/lib/filename-encoder';
 
 /**
  * POST /api/local-docs/export-pdf
@@ -80,19 +80,22 @@ export async function POST(request: NextRequest) {
     // 处理中文文件名编码问题
     const encodedFilename = encodePdfFilename(templateFile.name);
 
+    // 准备响应头（确保所有值都是ASCII安全的）
+    const responseHeaders = encodeHeaderValues({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': encodedFilename.contentDisposition,
+      'Content-Length': pdfResult.pdfBuffer.length.toString(),
+      'X-Conversion-Time': pdfResult.metadata.conversionTime.toString(),
+      'X-Original-Size': pdfResult.metadata.originalSize.toString(),
+      'X-PDF-Size': pdfResult.metadata.pdfSize.toString(),
+      'X-Original-Filename': templateFile.name,
+      'X-Safe-Filename': encodedFilename.safeFilename,
+    });
+
     // 返回PDF文件
     return new NextResponse(new Uint8Array(pdfResult.pdfBuffer), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': encodedFilename.contentDisposition,
-        'Content-Length': pdfResult.pdfBuffer.length.toString(),
-        'X-Conversion-Time': pdfResult.metadata.conversionTime.toString(),
-        'X-Original-Size': pdfResult.metadata.originalSize.toString(),
-        'X-PDF-Size': pdfResult.metadata.pdfSize.toString(),
-        'X-Original-Filename': encodeURIComponent(templateFile.name),
-        'X-Safe-Filename': encodedFilename.safeFilename,
-      },
+      headers: responseHeaders,
     });
 
   } catch (error) {
