@@ -129,24 +129,30 @@ export function TableEditor({
     const value = tableData[rowIndex]?.[column.name] || '';
     const errorKey = `${rowIndex}-${column.name}`;
     const cellError = errors[errorKey];
-    
-    const baseClassName = `w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-      cellError ? 'border-red-300' : 'border-gray-300'
+
+    const baseClassName = `w-full px-2 py-1.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
+      cellError ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-white hover:border-gray-400'
     }`;
-    
+
+    const handleInputChange = (newValue: string) => {
+      updateCell(rowIndex, column.name, newValue);
+    };
+
+    const handleInputBlur = () => {
+      const error = validateCell(rowIndex, column.name, value);
+      if (error) {
+        setErrors(prev => ({ ...prev, [errorKey]: error }));
+      }
+    };
+
     switch (column.type) {
       case 'select':
         return (
           <select
             value={value as string}
-            onChange={(e) => updateCell(rowIndex, column.name, e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             className={baseClassName}
-            onBlur={() => {
-              const error = validateCell(rowIndex, column.name, value);
-              if (error) {
-                setErrors(prev => ({ ...prev, [errorKey]: error }));
-              }
-            }}
+            onBlur={handleInputBlur}
           >
             <option value="">请选择...</option>
             {column.options?.map((option) => (
@@ -156,53 +162,42 @@ export function TableEditor({
             ))}
           </select>
         );
-        
+
       case 'date':
         return (
           <input
             type="date"
             value={value as string}
-            onChange={(e) => updateCell(rowIndex, column.name, e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             className={baseClassName}
-            onBlur={() => {
-              const error = validateCell(rowIndex, column.name, value);
-              if (error) {
-                setErrors(prev => ({ ...prev, [errorKey]: error }));
-              }
-            }}
+            onBlur={handleInputBlur}
+            placeholder="选择日期"
           />
         );
-        
+
       case 'number':
         return (
           <input
             type="number"
-            value={value as number}
-            onChange={(e) => updateCell(rowIndex, column.name, e.target.value)}
+            value={value === 0 ? '0' : (value as string) || ''}
+            onChange={(e) => handleInputChange(e.target.value)}
             className={baseClassName}
             step="0.01"
-            onBlur={() => {
-              const error = validateCell(rowIndex, column.name, value);
-              if (error) {
-                setErrors(prev => ({ ...prev, [errorKey]: error }));
-              }
-            }}
+            min="0"
+            onBlur={handleInputBlur}
+            placeholder="输入数字"
           />
         );
-        
+
       default: // text
         return (
           <input
             type="text"
             value={value as string}
-            onChange={(e) => updateCell(rowIndex, column.name, e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             className={baseClassName}
-            onBlur={() => {
-              const error = validateCell(rowIndex, column.name, value);
-              if (error) {
-                setErrors(prev => ({ ...prev, [errorKey]: error }));
-              }
-            }}
+            onBlur={handleInputBlur}
+            placeholder={`输入${column.name}`}
           />
         );
     }
@@ -210,22 +205,29 @@ export function TableEditor({
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto">
-        <table className="w-full border border-gray-300 rounded-lg">
+      {/* 表格容器 */}
+      <div className="overflow-x-auto border border-gray-300 rounded-lg bg-white shadow-sm">
+        <div className="min-w-full">
+          <table className="w-full table-fixed" style={{ minWidth: `${columns.length * 120 + (allowDeleteRows ? 64 : 0)}px` }}>
           <thead>
             <tr className="bg-gray-50">
               {columns.map((column) => (
                 <th
                   key={column.name}
-                  className="px-3 py-2 text-left text-xs font-medium text-gray-700 border-b border-gray-300"
-                  style={{ width: column.width }}
+                  className="px-2 py-3 text-left text-xs font-medium text-gray-700 border-b border-gray-300 whitespace-nowrap"
+                  style={{
+                    width: column.width || `${Math.floor(100 / columns.length)}%`,
+                    minWidth: '120px'
+                  }}
                 >
-                  {column.name}
-                  {column.required && <span className="text-red-500 ml-1">*</span>}
+                  <div className="truncate" title={column.name}>
+                    {column.name}
+                    {column.required && <span className="text-red-500 ml-1">*</span>}
+                  </div>
                 </th>
               ))}
               {allowDeleteRows && (
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-700 border-b border-gray-300 w-12">
+                <th className="px-2 py-3 text-center text-xs font-medium text-gray-700 border-b border-gray-300 w-16 min-w-16">
                   操作
                 </th>
               )}
@@ -235,23 +237,32 @@ export function TableEditor({
             {tableData.map((row, rowIndex) => (
               <tr key={rowIndex} className="hover:bg-gray-50">
                 {columns.map((column) => (
-                  <td key={column.name} className="px-3 py-2 border-b border-gray-200">
-                    {renderCell(rowIndex, column)}
-                    {errors[`${rowIndex}-${column.name}`] && (
-                      <div className="text-xs text-red-600 mt-1 flex items-center">
-                        <AlertCircle size={10} className="mr-1" />
-                        {errors[`${rowIndex}-${column.name}`]}
-                      </div>
-                    )}
+                  <td
+                    key={column.name}
+                    className="px-2 py-2 border-b border-gray-200 relative"
+                    style={{
+                      width: column.width || `${Math.floor(100 / columns.length)}%`,
+                      minWidth: '120px'
+                    }}
+                  >
+                    <div className="w-full">
+                      {renderCell(rowIndex, column)}
+                      {errors[`${rowIndex}-${column.name}`] && (
+                        <div className="text-xs text-red-600 mt-1 flex items-center">
+                          <AlertCircle size={10} className="mr-1 flex-shrink-0" />
+                          <span className="truncate">{errors[`${rowIndex}-${column.name}`]}</span>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 ))}
                 {allowDeleteRows && (
-                  <td className="px-3 py-2 border-b border-gray-200 text-center">
+                  <td className="px-2 py-2 border-b border-gray-200 text-center w-16 min-w-16">
                     <button
                       type="button"
                       onClick={() => deleteRow(rowIndex)}
                       disabled={tableData.length <= minRows}
-                      className={`p-1 rounded ${
+                      className={`p-1 rounded transition-colors ${
                         tableData.length <= minRows
                           ? 'text-gray-300 cursor-not-allowed'
                           : 'text-red-500 hover:text-red-700 hover:bg-red-50'
@@ -265,27 +276,31 @@ export function TableEditor({
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
       
       {allowAddRows && (
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center pt-2 border-t border-gray-200">
           <button
             type="button"
             onClick={addRow}
             disabled={tableData.length >= maxRows}
-            className={`flex items-center px-3 py-2 text-sm rounded-md ${
+            className={`flex items-center px-4 py-2 text-sm rounded-md border transition-colors ${
               tableData.length >= maxRows
-                ? 'text-gray-400 cursor-not-allowed'
-                : 'text-blue-600 hover:text-blue-800 hover:bg-blue-50'
+                ? 'text-gray-400 border-gray-200 cursor-not-allowed bg-gray-50'
+                : 'text-blue-600 border-blue-200 hover:text-blue-800 hover:bg-blue-50 hover:border-blue-300'
             }`}
           >
             <Plus size={16} className="mr-1" />
             添加行
           </button>
-          <span className="text-xs text-gray-500">
-            {tableData.length} / {maxRows} 行
-          </span>
+          <div className="text-xs text-gray-500 flex items-center space-x-2">
+            <span>{tableData.length} / {maxRows} 行</span>
+            {tableData.length >= maxRows && (
+              <span className="text-orange-500">已达到最大行数</span>
+            )}
+          </div>
         </div>
       )}
       
@@ -295,6 +310,19 @@ export function TableEditor({
           {error}
         </div>
       )}
+
+      {/* 空状态提示 */}
+      {tableData.length === 0 && allowAddRows && (
+        <div className="text-center py-6 text-gray-500 border border-dashed border-gray-300 rounded-lg">
+          <div className="text-sm">暂无数据</div>
+          <div className="text-xs mt-1">点击上方&ldquo;添加行&rdquo;按钮开始填写表格数据</div>
+        </div>
+      )}
+
+      {/* 移动端提示 */}
+      <div className="block sm:hidden text-xs text-gray-500 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+        💡 提示：在小屏幕上可以左右滑动查看完整表格内容
+      </div>
     </div>
   );
 }

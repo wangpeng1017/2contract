@@ -69,19 +69,25 @@ export function AdvancedFormField({ placeholder, value, onChange, error }: Advan
     switch (placeholder.type) {
       case 'table':
         if (!placeholder.tableConfig) {
-          return <div className="text-red-500">表格配置缺失</div>;
+          return (
+            <div className="text-red-500 p-4 bg-red-50 border border-red-200 rounded-lg">
+              ⚠️ 表格配置缺失，请检查模板文件中的表格定义
+            </div>
+          );
         }
         return (
-          <TableEditor
-            columns={placeholder.tableConfig.columns}
-            data={Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' ? value as TableData[] : []}
-            onChange={(data) => onChange(data)}
-            minRows={placeholder.tableConfig.minRows}
-            maxRows={placeholder.tableConfig.maxRows}
-            allowAddRows={placeholder.tableConfig.allowAddRows}
-            allowDeleteRows={placeholder.tableConfig.allowDeleteRows}
-            error={error}
-          />
+          <div className="w-full">
+            <TableEditor
+              columns={placeholder.tableConfig.columns}
+              data={Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' ? value as TableData[] : []}
+              onChange={(data) => onChange(data)}
+              minRows={placeholder.tableConfig.minRows}
+              maxRows={placeholder.tableConfig.maxRows}
+              allowAddRows={placeholder.tableConfig.allowAddRows}
+              allowDeleteRows={placeholder.tableConfig.allowDeleteRows}
+              error={error}
+            />
+          </div>
         );
 
       case 'textarea':

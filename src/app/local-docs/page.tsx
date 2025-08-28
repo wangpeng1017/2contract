@@ -573,30 +573,62 @@ function LocalDocsContent() {
           </div>
 
           <form onSubmit={handleFormSubmit} className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              {placeholders.map((placeholder) => (
-                <AdvancedFormField
-                  key={placeholder.name}
-                  placeholder={placeholder}
-                  value={formData[placeholder.name] || ''}
-                  onChange={(value) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      [placeholder.name]: value
-                    }));
-                    // 清除该字段的错误
-                    if (fieldErrors[placeholder.name]) {
-                      setFieldErrors(prev => {
-                        const newErrors = { ...prev };
-                        delete newErrors[placeholder.name];
-                        return newErrors;
-                      });
-                    }
-                  }}
-                  error={fieldErrors[placeholder.name]}
-                />
-              ))}
-            </div>
+            {/* 分离表格字段和普通字段 */}
+            {placeholders.some(p => p.type === 'table') && (
+              <div className="space-y-6">
+                {placeholders.filter(p => p.type === 'table').map((placeholder) => (
+                  <div key={placeholder.name} className="w-full">
+                    <AdvancedFormField
+                      placeholder={placeholder}
+                      value={formData[placeholder.name] || ''}
+                      onChange={(value) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          [placeholder.name]: value
+                        }));
+                        // 清除该字段的错误
+                        if (fieldErrors[placeholder.name]) {
+                          setFieldErrors(prev => {
+                            const newErrors = { ...prev };
+                            delete newErrors[placeholder.name];
+                            return newErrors;
+                          });
+                        }
+                      }}
+                      error={fieldErrors[placeholder.name]}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 普通字段使用网格布局 */}
+            {placeholders.some(p => p.type !== 'table') && (
+              <div className="grid md:grid-cols-2 gap-6">
+                {placeholders.filter(p => p.type !== 'table').map((placeholder) => (
+                  <AdvancedFormField
+                    key={placeholder.name}
+                    placeholder={placeholder}
+                    value={formData[placeholder.name] || ''}
+                    onChange={(value) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        [placeholder.name]: value
+                      }));
+                      // 清除该字段的错误
+                      if (fieldErrors[placeholder.name]) {
+                        setFieldErrors(prev => {
+                          const newErrors = { ...prev };
+                          delete newErrors[placeholder.name];
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    error={fieldErrors[placeholder.name]}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* 导出格式选择 */}
             <div className="card p-4 bg-gray-50">
