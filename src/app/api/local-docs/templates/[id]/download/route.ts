@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/utils';
 import { TemplateManager } from '@/lib/template-manager';
+import { encodeTemplateFilename } from '@/lib/filename-encoder';
 
 /**
  * GET /api/local-docs/templates/[id]/download
@@ -29,16 +30,21 @@ export async function GET(
 
     console.log(`[Template Download API] 模板下载成功: ${template.metadata.name}`);
 
+    // 处理中文文件名编码问题
+    const encodedFilename = encodeTemplateFilename(template.metadata.name, templateId);
+
     // 返回模板文件
     return new NextResponse(template.templateData, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.metadata.name)}.docx"`,
+        'Content-Disposition': encodedFilename.contentDisposition,
         'Content-Length': template.templateData.byteLength.toString(),
         'X-Template-Id': templateId,
-        'X-Template-Name': template.metadata.name,
+        'X-Template-Name': encodeURIComponent(template.metadata.name),
         'X-Template-Version': template.metadata.version,
+        'X-Original-Filename': encodedFilename.encodedOriginal,
+        'X-Safe-Filename': encodedFilename.safeFilename,
       },
     });
 

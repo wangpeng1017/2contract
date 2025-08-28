@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/utils';
 import { PDFConverter, PDFConversionOptions } from '@/lib/pdf-converter';
+import { encodePdfFilename } from '@/lib/filename-encoder';
 
 /**
  * POST /api/local-docs/export-pdf
@@ -76,20 +77,21 @@ export async function POST(request: NextRequest) {
 
     console.log(`[PDF Export API] PDF转换完成，大小: ${pdfResult.pdfBuffer.length} bytes`);
 
-    // 生成文件名
-    const originalName = templateFile.name.replace(/\.(docx?)$/i, '');
-    const pdfFileName = `${originalName}.pdf`;
+    // 处理中文文件名编码问题
+    const encodedFilename = encodePdfFilename(templateFile.name);
 
     // 返回PDF文件
     return new NextResponse(new Uint8Array(pdfResult.pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(pdfFileName)}"`,
+        'Content-Disposition': encodedFilename.contentDisposition,
         'Content-Length': pdfResult.pdfBuffer.length.toString(),
         'X-Conversion-Time': pdfResult.metadata.conversionTime.toString(),
         'X-Original-Size': pdfResult.metadata.originalSize.toString(),
         'X-PDF-Size': pdfResult.metadata.pdfSize.toString(),
+        'X-Original-Filename': encodeURIComponent(templateFile.name),
+        'X-Safe-Filename': encodedFilename.safeFilename,
       },
     });
 

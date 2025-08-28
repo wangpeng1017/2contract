@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/utils';
 import { WordProcessor } from '@/lib/word-processor';
+import { encodeDocumentFilename } from '@/lib/filename-encoder';
 
 interface FormData {
   [key: string]: string;
@@ -54,15 +55,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Local Docs] 文档生成完成，大小: ${result.documentBuffer.byteLength} bytes`);
 
+    // 处理中文文件名编码问题
+    const originalFileName = file.name;
+    const fileNameWithoutExt = originalFileName.replace(/\.[^/.]+$/, '');
+    const fileExt = originalFileName.match(/\.[^/.]+$/)?.[0] || '.docx';
+    const generatedFileName = `已填充_${fileNameWithoutExt}${fileExt}`;
+
+    // 使用工具函数编码文件名
+    const encodedFilename = encodeDocumentFilename(generatedFileName);
+
     // 返回生成的文档
     return new NextResponse(result.documentBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="generated_${file.name}"`,
+        'Content-Disposition': encodedFilename.contentDisposition,
         'Content-Length': result.documentBuffer.byteLength.toString(),
         'X-Generated-At': result.metadata.generatedAt,
         'X-Filled-Fields': result.metadata.filledFields.join(','),
+        'X-Original-Filename': encodeURIComponent(originalFileName),
+        'X-Safe-Filename': encodedFilename.safeFilename,
       },
     });
 
