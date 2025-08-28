@@ -732,73 +732,174 @@ export class WordProcessor {
   }
 
   /**
-   * 从XML中提取所有可能的占位符格式
+   * 从XML中提取所有可能的占位符格式（增强版）
    */
   private static extractAllPlaceholdersFromXml(xmlContent: string): string[] {
     const placeholders = new Set<string>();
+
+    console.log('[WordProcessor] 开始增强占位符识别...');
 
     // 1. 标准双花括号格式
     const doublePattern = /\{\{([^}]+)\}\}/g;
     let match;
     while ((match = doublePattern.exec(xmlContent)) !== null) {
-      placeholders.add(match[1].trim());
+      const placeholder = match[1].trim();
+      placeholders.add(placeholder);
+      console.log(`[WordProcessor] 找到双花括号占位符: {{${placeholder}}}`);
     }
 
-    // 2. 处理被XML节点分割的占位符
-    // Word经常会将占位符分割，如: <w:t>{{甲方</w:t><w:t>公司名称}}</w:t>
-    const fragmentPattern = /\{\{[^}]*\}?\}?/g;
-    const fragments: string[] = [];
-    while ((match = fragmentPattern.exec(xmlContent)) !== null) {
-      fragments.push(match[0]);
-    }
-
-    // 尝试重组分割的占位符
-    const reassembledPlaceholders = this.reassembleFragmentedPlaceholders(fragments, xmlContent);
-    reassembledPlaceholders.forEach(p => placeholders.add(p));
-
-    // 3. 单花括号格式（备选）
+    // 2. 单花括号格式
     const singlePattern = /\{([^{}]+)\}/g;
     while ((match = singlePattern.exec(xmlContent)) !== null) {
       const content = match[1].trim();
       // 排除XML标签和其他非占位符内容
-      if (!content.includes('<') && !content.includes('>') && content.length > 0) {
+      if (!content.includes('<') && !content.includes('>') &&
+          !content.includes('w:') && content.length > 0 && content.length < 50) {
         placeholders.add(content);
+        console.log(`[WordProcessor] 找到单花括号占位符: {${content}}`);
       }
     }
 
-    return Array.from(placeholders).sort();
+    // 3. Word域代码格式 (MERGEFIELD)
+    const mergeFieldPattern = /MERGEFIELD\s+([^\s\\]+)/gi;
+    while ((match = mergeFieldPattern.exec(xmlContent)) !== null) {
+      const fieldName = match[1].trim();
+      placeholders.add(fieldName);
+      console.log(`[WordProcessor] 找到MERGEFIELD占位符: ${fieldName}`);
+    }
+
+    // 4. 处理被XML节点分割的占位符
+    const reassembledPlaceholders = this.reassembleFragmentedPlaceholders(xmlContent);
+    reassembledPlaceholders.forEach(p => {
+      placeholders.add(p);
+      console.log(`[WordProcessor] 找到重组占位符: ${p}`);
+    });
+
+    // 5. 智能字段名推断（基于已知字段模式）
+    const inferredPlaceholders = this.inferPlaceholdersFromContent(xmlContent);
+    inferredPlaceholders.forEach(p => {
+      placeholders.add(p);
+      console.log(`[WordProcessor] 推断占位符: ${p}`);
+    });
+
+    const result = Array.from(placeholders).sort();
+    console.log(`[WordProcessor] 占位符识别完成，共找到 ${result.length} 个:`, result);
+
+    return result;
   }
 
   /**
-   * 重组被分割的占位符
+   * 重组被分割的占位符（增强版）
    */
-  private static reassembleFragmentedPlaceholders(fragments: string[], xmlContent: string): string[] {
+  private static reassembleFragmentedPlaceholders(xmlContent: string): string[] {
     const reassembled: string[] = [];
 
-    // 查找可能的占位符模式
-    const possiblePatterns = [
-      /\{\{[^}]*甲方[^}]*公司[^}]*名称[^}]*\}\}/g,
-      /\{\{[^}]*乙方[^}]*公司[^}]*名称[^}]*\}\}/g,
-      /\{\{[^}]*合同[^}]*金额[^}]*\}\}/g,
-      /\{\{[^}]*产品[^}]*清单[^}]*\}\}/g,
-      /\{\{[^}]*签署[^}]*日期[^}]*\}\}/g,
-      // 通用模式：查找被分割的中文占位符
-      /\{\{[^}]*[\u4e00-\u9fa5]+[^}]*\}\}/g
+    // 1. 查找跨XML节点的占位符片段
+    // 模式：<w:t>{{部分</w:t>...其他节点...<w:t>内容}}</w:t>
+    const crossNodePattern = /<w:t[^>]*>\{\{[^<}]*<\/w:t>.*?<w:t[^>]*>[^<}]*\}\}<\/w:t>/g;
+    let match;
+    while ((match = crossNodePattern.exec(xmlContent)) !== null) {
+      const fragment = match[0];
+      // 提取所有w:t节点中的文本
+      const textMatches = fragment.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+      if (textMatches) {
+        let combined = '';
+        textMatches.forEach(textMatch => {
+          const text = textMatch.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1');
+          combined += text;
+        });
+
+        // 检查是否形成完整的占位符
+        const placeholderMatch = combined.match(/\{\{([^}]+)\}\}/);
+        if (placeholderMatch) {
+          reassembled.push(placeholderMatch[1].trim());
+        }
+      }
+    }
+
+    // 2. 查找可能的中文字段模式（即使没有花括号）
+    const chineseFieldPatterns = [
+      /甲方[^<>]*公司[^<>]*名称/g,
+      /乙方[^<>]*公司[^<>]*名称/g,
+      /合同[^<>]*类型/g,
+      /合同[^<>]*金额/g,
+      /签署[^<>]*日期/g,
+      /甲方[^<>]*联系人/g,
+      /甲方[^<>]*电话/g,
+      /乙方[^<>]*联系人/g,
+      /联系[^<>]*邮箱/g,
+      /付款[^<>]*方式/g,
+      /产品[^<>]*清单/g,
+      /是否[^<>]*包含[^<>]*保险/g,
+      /特别[^<>]*约定/g,
     ];
 
-    possiblePatterns.forEach(pattern => {
-      let match;
-      while ((match = pattern.exec(xmlContent)) !== null) {
-        const fullMatch = match[0];
-        // 提取占位符内容
-        const content = fullMatch.replace(/^\{\{/, '').replace(/\}\}$/, '').trim();
-        if (content && content.length > 0) {
-          reassembled.push(content);
+    chineseFieldPatterns.forEach(pattern => {
+      const matches = xmlContent.match(pattern);
+      if (matches) {
+        matches.forEach(match => {
+          // 清理匹配结果
+          const cleaned = match.replace(/[<>]/g, '').trim();
+          if (cleaned.length > 0) {
+            reassembled.push(cleaned);
+          }
+        });
+      }
+    });
+
+    return Array.from(new Set(reassembled)); // 去重
+  }
+
+  /**
+   * 从内容中智能推断占位符
+   */
+  private static inferPlaceholdersFromContent(xmlContent: string): string[] {
+    const inferred: string[] = [];
+
+    // 已知的13个字段
+    const knownFields = [
+      "甲方公司名称", "乙方公司名称", "合同类型", "合同金额", "签署日期",
+      "甲方联系人", "甲方电话", "乙方联系人", "联系邮箱", "付款方式",
+      "产品清单", "是否包含保险", "特别约定"
+    ];
+
+    // 检查每个已知字段是否在文档中出现
+    knownFields.forEach(field => {
+      // 检查多种可能的格式
+      const patterns = [
+        new RegExp(`\\{\\{\\s*${field}\\s*\\}\\}`, 'g'),  // {{字段名}}
+        new RegExp(`\\{\\s*${field}\\s*\\}`, 'g'),        // {字段名}
+        new RegExp(`${field}\\s*[:：]`, 'g'),              // 字段名: 或 字段名：
+        new RegExp(`${field}`, 'g'),                       // 直接出现
+      ];
+
+      let found = false;
+      for (const pattern of patterns) {
+        if (pattern.test(xmlContent)) {
+          inferred.push(field);
+          found = true;
+          break;
+        }
+      }
+
+      // 如果没有找到完整字段名，尝试查找关键词
+      if (!found) {
+        const keywords = field.split(/[方公司类型金额日期联系人电话邮箱方式清单保险约定]/);
+        let keywordFound = 0;
+        keywords.forEach(keyword => {
+          if (keyword.length > 0 && xmlContent.includes(keyword)) {
+            keywordFound++;
+          }
+        });
+
+        // 如果找到足够多的关键词，推断这个字段存在
+        if (keywordFound >= Math.ceil(keywords.length / 2)) {
+          inferred.push(field);
         }
       }
     });
 
-    return reassembled;
+    return Array.from(new Set(inferred)); // 去重
   }
 
   /**
@@ -825,22 +926,43 @@ export class WordProcessor {
       let documentXml = await documentXmlFile.async('text');
       console.log('[WordProcessor] 原始XML长度:', documentXml.length);
 
-      // 手动替换占位符
+      // 增强的多格式占位符替换
       let replacedCount = 0;
       for (const [key, value] of Object.entries(data)) {
-        const placeholder = `{{${key}}}`;
         const stringValue = String(value || '');
+        let fieldReplaced = false;
 
-        if (documentXml.includes(placeholder)) {
-          // 使用全局替换
-          const regex = new RegExp(this.escapeRegExp(placeholder), 'g');
-          const beforeLength = documentXml.length;
-          documentXml = documentXml.replace(regex, stringValue);
-          const afterLength = documentXml.length;
+        // 尝试多种占位符格式
+        const placeholderFormats = [
+          `{{${key}}}`,           // 标准双花括号
+          `{${key}}`,             // 单花括号
+          `{{${key.trim()}}}`,    // 去除空格的双花括号
+          `{${key.trim()}}`,      // 去除空格的单花括号
+        ];
 
-          if (beforeLength !== afterLength) {
+        for (const placeholder of placeholderFormats) {
+          if (documentXml.includes(placeholder)) {
+            const regex = new RegExp(this.escapeRegExp(placeholder), 'g');
+            const beforeLength = documentXml.length;
+            documentXml = documentXml.replace(regex, stringValue);
+            const afterLength = documentXml.length;
+
+            if (beforeLength !== afterLength) {
+              replacedCount++;
+              fieldReplaced = true;
+              console.log(`[WordProcessor] 替换 ${placeholder} -> ${stringValue}`);
+              break; // 找到一种格式就停止
+            }
+          }
+        }
+
+        // 如果标准格式都没找到，尝试智能匹配
+        if (!fieldReplaced) {
+          const smartReplaced = this.smartReplaceField(documentXml, key, stringValue);
+          if (smartReplaced.replaced) {
+            documentXml = smartReplaced.xml;
             replacedCount++;
-            console.log(`[WordProcessor] 替换 ${placeholder} -> ${stringValue}`);
+            console.log(`[WordProcessor] 智能替换 ${key} -> ${stringValue}`);
           }
         }
       }
@@ -876,6 +998,63 @@ export class WordProcessor {
       console.error('[WordProcessor] 原生XML替换失败:', error);
       throw new Error(`原生XML替换失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
+  }
+
+  /**
+   * 智能字段替换（处理特殊格式和分割情况）
+   */
+  private static smartReplaceField(xmlContent: string, fieldName: string, value: string): { xml: string; replaced: boolean } {
+    let xml = xmlContent;
+    let replaced = false;
+
+    // 1. 尝试替换跨节点分割的占位符
+    const crossNodePatterns = [
+      // 匹配 <w:t>{{字段</w:t>...<w:t>名}}</w:t> 这样的分割
+      new RegExp(`<w:t[^>]*>\\{\\{[^<]*${fieldName.substring(0, Math.min(3, fieldName.length))}[^<]*</w:t>.*?<w:t[^>]*>[^<]*${fieldName.substring(-3)}[^<]*\\}\\}</w:t>`, 'g'),
+      // 匹配包含字段名关键词的模式
+      new RegExp(`<w:t[^>]*>[^<]*${fieldName}[^<]*</w:t>`, 'g'),
+    ];
+
+    for (const pattern of crossNodePatterns) {
+      const matches = xml.match(pattern);
+      if (matches) {
+        matches.forEach(match => {
+          // 简单替换：将整个匹配替换为值
+          xml = xml.replace(match, `<w:t>${value}</w:t>`);
+          replaced = true;
+        });
+      }
+    }
+
+    // 2. 尝试替换Word域代码
+    const fieldCodePattern = new RegExp(`MERGEFIELD\\s+${fieldName}\\s*`, 'gi');
+    if (fieldCodePattern.test(xml)) {
+      // 这里需要更复杂的Word域代码处理逻辑
+      // 暂时简单替换
+      xml = xml.replace(fieldCodePattern, value);
+      replaced = true;
+    }
+
+    // 3. 尝试模糊匹配和替换
+    if (!replaced) {
+      // 查找包含字段名的文本节点
+      const textNodePattern = new RegExp(`<w:t[^>]*>([^<]*${fieldName}[^<]*)</w:t>`, 'g');
+      const textMatches = xml.match(textNodePattern);
+
+      if (textMatches) {
+        textMatches.forEach(match => {
+          // 如果文本节点只包含字段名（可能有一些格式字符），就替换它
+          const textContent = match.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1');
+          if (textContent.trim() === fieldName ||
+              textContent.includes(fieldName) && textContent.length < fieldName.length + 10) {
+            xml = xml.replace(match, `<w:t>${value}</w:t>`);
+            replaced = true;
+          }
+        });
+      }
+    }
+
+    return { xml, replaced };
   }
 
   /**
