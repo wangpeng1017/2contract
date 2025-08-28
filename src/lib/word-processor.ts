@@ -810,17 +810,21 @@ export class WordProcessor {
   }
 
   /**
-   * 重组被分割的占位符（增强版）
+   * 重组被分割的占位符（专门处理Word分割问题）
    */
   private static reassembleFragmentedPlaceholders(xmlContent: string): string[] {
     const reassembled: string[] = [];
 
-    // 1. 查找跨XML节点的占位符片段
-    // 模式：<w:t>{{部分</w:t>...其他节点...<w:t>内容}}</w:t>
-    const crossNodePattern = /<w:t[^>]*>\{\{[^<}]*<\/w:t>.*?<w:t[^>]*>[^<}]*\}\}<\/w:t>/g;
+    console.log('[WordProcessor] 开始重组被分割的占位符...');
+
+    // 1. 处理单花括号分割占位符 {内容}
+    // 模式：<w:t>{</w:t>...其他节点...<w:t>内容</w:t>...其他节点...<w:t>}</w:t>
+    const singleBracePattern = new RegExp('<w:t[^>]*>\\{</w:t>.*?<w:t[^>]*>\\}</w:t>', 'g');
     let match;
-    while ((match = crossNodePattern.exec(xmlContent)) !== null) {
+    while ((match = singleBracePattern.exec(xmlContent)) !== null) {
       const fragment = match[0];
+      console.log(`[WordProcessor] 找到单花括号分割片段: ${fragment.substring(0, 100)}...`);
+
       // 提取所有w:t节点中的文本
       const textMatches = fragment.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
       if (textMatches) {
@@ -830,45 +834,123 @@ export class WordProcessor {
           combined += text;
         });
 
-        // 检查是否形成完整的占位符
-        const placeholderMatch = combined.match(/\{\{([^}]+)\}\}/);
+        console.log(`[WordProcessor] 重组后的文本: ${combined}`);
+
+        // 检查是否形成完整的单花括号占位符
+        const placeholderMatch = combined.match(/\{([^{}]+)\}/);
         if (placeholderMatch) {
-          reassembled.push(placeholderMatch[1].trim());
+          const placeholder = placeholderMatch[1].trim();
+          if (placeholder && placeholder.length > 0) {
+            reassembled.push(placeholder);
+            console.log(`[WordProcessor] 重组成功: {${placeholder}}`);
+          }
         }
       }
     }
 
-    // 2. 查找可能的中文字段模式（即使没有花括号）
-    const chineseFieldPatterns = [
-      /甲方[^<>]*公司[^<>]*名称/g,
-      /乙方[^<>]*公司[^<>]*名称/g,
-      /合同[^<>]*类型/g,
-      /合同[^<>]*金额/g,
-      /签署[^<>]*日期/g,
-      /甲方[^<>]*联系人/g,
-      /甲方[^<>]*电话/g,
-      /乙方[^<>]*联系人/g,
-      /联系[^<>]*邮箱/g,
-      /付款[^<>]*方式/g,
-      /产品[^<>]*清单/g,
-      /是否[^<>]*包含[^<>]*保险/g,
-      /特别[^<>]*约定/g,
-    ];
+    // 2. 处理双花括号分割占位符 {{内容}}
+    const doubleBracePattern = new RegExp('<w:t[^>]*>\\{\\{</w:t>.*?<w:t[^>]*>\\}\\}</w:t>', 'g');
+    while ((match = doubleBracePattern.exec(xmlContent)) !== null) {
+      const fragment = match[0];
+      console.log(`[WordProcessor] 找到双花括号分割片段: ${fragment.substring(0, 100)}...`);
 
-    chineseFieldPatterns.forEach(pattern => {
-      const matches = xmlContent.match(pattern);
-      if (matches) {
-        matches.forEach(match => {
-          // 清理匹配结果
-          const cleaned = match.replace(/[<>]/g, '').trim();
-          if (cleaned.length > 0) {
-            reassembled.push(cleaned);
-          }
+      const textMatches = fragment.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+      if (textMatches) {
+        let combined = '';
+        textMatches.forEach(textMatch => {
+          const text = textMatch.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1');
+          combined += text;
         });
+
+        console.log(`[WordProcessor] 重组后的文本: ${combined}`);
+
+        const placeholderMatch = combined.match(/\{\{([^}]+)\}\}/);
+        if (placeholderMatch) {
+          const placeholder = placeholderMatch[1].trim();
+          if (placeholder && placeholder.length > 0) {
+            reassembled.push(placeholder);
+            console.log(`[WordProcessor] 重组成功: {{${placeholder}}}`);
+          }
+        }
+      }
+    }
+
+    // 3. 更激进的方法：查找所有可能的占位符模式
+    // 查找 { 开始的节点，然后向后查找对应的 } 结束节点
+    const aggressiveReassembly = this.aggressiveReassemblePlaceholders(xmlContent);
+    aggressiveReassembly.forEach(placeholder => {
+      if (!reassembled.includes(placeholder)) {
+        reassembled.push(placeholder);
+        console.log(`[WordProcessor] 激进重组成功: ${placeholder}`);
       }
     });
 
-    return Array.from(new Set(reassembled)); // 去重
+    const uniqueReassembled = Array.from(new Set(reassembled));
+    console.log(`[WordProcessor] 重组完成，共找到 ${uniqueReassembled.length} 个占位符:`, uniqueReassembled);
+
+    return uniqueReassembled;
+  }
+
+  /**
+   * 激进的占位符重组方法
+   */
+  private static aggressiveReassemblePlaceholders(xmlContent: string): string[] {
+    const reassembled: string[] = [];
+
+    // 提取所有文本节点的内容和位置
+    const textNodes: { text: string; index: number }[] = [];
+    const textPattern = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+    let match;
+
+    while ((match = textPattern.exec(xmlContent)) !== null) {
+      textNodes.push({
+        text: match[1],
+        index: match.index
+      });
+    }
+
+    // 查找占位符模式
+    for (let i = 0; i < textNodes.length; i++) {
+      const currentNode = textNodes[i];
+
+      // 查找以 { 开始的节点
+      if (currentNode.text.includes('{')) {
+        let placeholderContent = '';
+        let foundClosing = false;
+
+        // 从当前节点开始，向后查找直到找到 }
+        for (let j = i; j < textNodes.length && j < i + 10; j++) { // 限制搜索范围
+          const nodeText = textNodes[j].text;
+          placeholderContent += nodeText;
+
+          if (nodeText.includes('}')) {
+            foundClosing = true;
+            break;
+          }
+        }
+
+        if (foundClosing) {
+          // 尝试提取占位符
+          const singleBraceMatch = placeholderContent.match(/\{([^{}]+)\}/);
+          if (singleBraceMatch) {
+            const placeholder = singleBraceMatch[1].trim();
+            if (placeholder && placeholder.length > 0 && placeholder.length < 100) {
+              reassembled.push(placeholder);
+            }
+          }
+
+          const doubleBraceMatch = placeholderContent.match(/\{\{([^}]+)\}\}/);
+          if (doubleBraceMatch) {
+            const placeholder = doubleBraceMatch[1].trim();
+            if (placeholder && placeholder.length > 0 && placeholder.length < 100) {
+              reassembled.push(placeholder);
+            }
+          }
+        }
+      }
+    }
+
+    return Array.from(new Set(reassembled));
   }
 
   /**
