@@ -62,6 +62,11 @@ export interface GenerationResult {
     templateName: string;
     filledFields: string[];
     fileSize: number;
+    diagnosis?: {
+      totalPlaceholders: number;
+      matchedPlaceholders: number;
+      unmatchedPlaceholders: number;
+    };
   };
 }
 
@@ -624,6 +629,139 @@ export class WordProcessor {
   }
   
   /**
+   * 诊断模板和数据匹配问题
+   */
+  static async diagnoseTemplatePlaceholders(
+    templateBuffer: ArrayBuffer,
+    data: Record<string, any>,
+    templateName: string
+  ): Promise<{
+    templatePlaceholders: string[];
+    dataKeys: string[];
+    matchedKeys: string[];
+    unmatchedTemplateKeys: string[];
+    unmatchedDataKeys: string[];
+    xmlContent: string;
+  }> {
+    try {
+      console.log(`[WordProcessor] 开始诊断模板: ${templateName}`);
+
+      // 解析模板文件
+      const zip = new JSZip();
+      await zip.loadAsync(templateBuffer);
+
+      const documentXml = await zip.file('word/document.xml')?.async('string');
+      if (!documentXml) {
+        throw new Error('无法找到document.xml文件');
+      }
+
+      // 提取模板中的所有占位符（更全面的匹配）
+      const templatePlaceholders = this.extractAllPlaceholdersFromXml(documentXml);
+      const dataKeys = Object.keys(data);
+
+      // 分析匹配情况
+      const matchedKeys = templatePlaceholders.filter(placeholder =>
+        dataKeys.includes(placeholder)
+      );
+      const unmatchedTemplateKeys = templatePlaceholders.filter(placeholder =>
+        !dataKeys.includes(placeholder)
+      );
+      const unmatchedDataKeys = dataKeys.filter(key =>
+        !templatePlaceholders.includes(key)
+      );
+
+      console.log(`[WordProcessor] 诊断结果:`);
+      console.log(`  模板占位符 (${templatePlaceholders.length}):`, templatePlaceholders);
+      console.log(`  数据键名 (${dataKeys.length}):`, dataKeys);
+      console.log(`  匹配成功 (${matchedKeys.length}):`, matchedKeys);
+      console.log(`  模板中未匹配 (${unmatchedTemplateKeys.length}):`, unmatchedTemplateKeys);
+      console.log(`  数据中未匹配 (${unmatchedDataKeys.length}):`, unmatchedDataKeys);
+
+      return {
+        templatePlaceholders,
+        dataKeys,
+        matchedKeys,
+        unmatchedTemplateKeys,
+        unmatchedDataKeys,
+        xmlContent: documentXml
+      };
+    } catch (error) {
+      console.error('[WordProcessor] 诊断失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 从XML中提取所有可能的占位符格式
+   */
+  private static extractAllPlaceholdersFromXml(xmlContent: string): string[] {
+    const placeholders = new Set<string>();
+
+    // 1. 标准双花括号格式
+    const doublePattern = /\{\{([^}]+)\}\}/g;
+    let match;
+    while ((match = doublePattern.exec(xmlContent)) !== null) {
+      placeholders.add(match[1].trim());
+    }
+
+    // 2. 处理被XML节点分割的占位符
+    // Word经常会将占位符分割，如: <w:t>{{甲方</w:t><w:t>公司名称}}</w:t>
+    const fragmentPattern = /\{\{[^}]*\}?\}?/g;
+    const fragments: string[] = [];
+    while ((match = fragmentPattern.exec(xmlContent)) !== null) {
+      fragments.push(match[0]);
+    }
+
+    // 尝试重组分割的占位符
+    const reassembledPlaceholders = this.reassembleFragmentedPlaceholders(fragments, xmlContent);
+    reassembledPlaceholders.forEach(p => placeholders.add(p));
+
+    // 3. 单花括号格式（备选）
+    const singlePattern = /\{([^{}]+)\}/g;
+    while ((match = singlePattern.exec(xmlContent)) !== null) {
+      const content = match[1].trim();
+      // 排除XML标签和其他非占位符内容
+      if (!content.includes('<') && !content.includes('>') && content.length > 0) {
+        placeholders.add(content);
+      }
+    }
+
+    return Array.from(placeholders).sort();
+  }
+
+  /**
+   * 重组被分割的占位符
+   */
+  private static reassembleFragmentedPlaceholders(fragments: string[], xmlContent: string): string[] {
+    const reassembled: string[] = [];
+
+    // 查找可能的占位符模式
+    const possiblePatterns = [
+      /\{\{[^}]*甲方[^}]*公司[^}]*名称[^}]*\}\}/g,
+      /\{\{[^}]*乙方[^}]*公司[^}]*名称[^}]*\}\}/g,
+      /\{\{[^}]*合同[^}]*金额[^}]*\}\}/g,
+      /\{\{[^}]*产品[^}]*清单[^}]*\}\}/g,
+      /\{\{[^}]*签署[^}]*日期[^}]*\}\}/g,
+      // 通用模式：查找被分割的中文占位符
+      /\{\{[^}]*[\u4e00-\u9fa5]+[^}]*\}\}/g
+    ];
+
+    possiblePatterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(xmlContent)) !== null) {
+        const fullMatch = match[0];
+        // 提取占位符内容
+        const content = fullMatch.replace(/^\{\{/, '').replace(/\}\}$/, '').trim();
+        if (content && content.length > 0) {
+          reassembled.push(content);
+        }
+      }
+    });
+
+    return reassembled;
+  }
+
+  /**
    * 生成填充数据后的Word文档
    */
   static async generateDocument(
@@ -636,10 +774,18 @@ export class WordProcessor {
       console.log(`[WordProcessor] 填充数据字段:`, Object.keys(data));
       console.log(`[WordProcessor] 填充数据详情:`, JSON.stringify(data, null, 2));
 
+      // 先进行诊断
+      const diagnosis = await this.diagnoseTemplatePlaceholders(templateBuffer, data, templateName);
+
+      // 如果有不匹配的情况，尝试修复数据键名
+      const fixedData = this.fixDataKeyMapping(data, diagnosis);
+
+      console.log(`[WordProcessor] 修复后的数据键名:`, Object.keys(fixedData));
+
       // 使用docx-templates生成文档
       const documentBuffer = await createReport({
         template: new Uint8Array(templateBuffer),
-        data: data,
+        data: fixedData,
         additionalJsContext: {
           // 添加一些辅助函数
           formatDate: (date: string) => {
@@ -654,29 +800,154 @@ export class WordProcessor {
             if (!amount) return '';
             return `¥${Number(amount).toLocaleString('zh-CN')}`;
           }
-        }
+        },
+        // 添加详细的错误处理
+        processLineBreaks: true,
+        failFast: false
       });
-      
-      const filledFields = Object.keys(data).filter(key => 
-        data[key] !== undefined && data[key] !== null && data[key] !== ''
+
+      const filledFields = Object.keys(fixedData).filter(key =>
+        fixedData[key] !== undefined && fixedData[key] !== null && fixedData[key] !== ''
       );
-      
+
       console.log(`[WordProcessor] 文档生成完成，大小: ${documentBuffer.byteLength} bytes`);
-      
+      console.log(`[WordProcessor] 实际填充字段:`, filledFields);
+
       return {
         documentBuffer: documentBuffer.buffer as ArrayBuffer,
         metadata: {
           generatedAt: new Date().toISOString(),
           templateName,
           filledFields,
-          fileSize: documentBuffer.byteLength
+          fileSize: documentBuffer.byteLength,
+          diagnosis: {
+            totalPlaceholders: diagnosis.templatePlaceholders.length,
+            matchedPlaceholders: diagnosis.matchedKeys.length,
+            unmatchedPlaceholders: diagnosis.unmatchedTemplateKeys.length
+          }
         }
       };
-      
+
     } catch (error) {
       console.error('[WordProcessor] 文档生成失败:', error);
       throw new Error(`文档生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
+  }
+
+  /**
+   * 修复数据键名映射问题
+   */
+  private static fixDataKeyMapping(
+    data: Record<string, any>,
+    diagnosis: {
+      templatePlaceholders: string[];
+      dataKeys: string[];
+      matchedKeys: string[];
+      unmatchedTemplateKeys: string[];
+      unmatchedDataKeys: string[];
+    }
+  ): Record<string, any> {
+    const fixedData = { ...data };
+
+    console.log(`[WordProcessor] 开始修复数据键名映射`);
+
+    // 1. 处理完全匹配的情况（无需修复）
+    diagnosis.matchedKeys.forEach(key => {
+      console.log(`[WordProcessor] ✓ 完全匹配: ${key}`);
+    });
+
+    // 2. 尝试修复不匹配的键名
+    diagnosis.unmatchedDataKeys.forEach(dataKey => {
+      // 查找最相似的模板占位符
+      const bestMatch = this.findBestPlaceholderMatch(dataKey, diagnosis.unmatchedTemplateKeys);
+      if (bestMatch) {
+        console.log(`[WordProcessor] 🔧 键名映射: "${dataKey}" -> "${bestMatch}"`);
+        fixedData[bestMatch] = fixedData[dataKey];
+        // 保留原键名以防万一
+        // delete fixedData[dataKey];
+      } else {
+        console.log(`[WordProcessor] ⚠️ 未找到匹配的占位符: ${dataKey}`);
+      }
+    });
+
+    // 3. 为未匹配的模板占位符提供默认值
+    diagnosis.unmatchedTemplateKeys.forEach(templateKey => {
+      if (!fixedData[templateKey]) {
+        // 尝试从相似的数据键中找到值
+        const similarDataKey = this.findBestDataKeyMatch(templateKey, diagnosis.unmatchedDataKeys);
+        if (similarDataKey && data[similarDataKey]) {
+          console.log(`[WordProcessor] 🔄 反向映射: "${templateKey}" <- "${similarDataKey}"`);
+          fixedData[templateKey] = data[similarDataKey];
+        } else {
+          // 提供默认值以避免模板错误
+          console.log(`[WordProcessor] 📝 默认值: "${templateKey}" = "[未填写]"`);
+          fixedData[templateKey] = '[未填写]';
+        }
+      }
+    });
+
+    console.log(`[WordProcessor] 键名映射修复完成`);
+    return fixedData;
+  }
+
+  /**
+   * 查找最匹配的占位符
+   */
+  private static findBestPlaceholderMatch(dataKey: string, templatePlaceholders: string[]): string | null {
+    if (templatePlaceholders.length === 0) return null;
+
+    // 1. 精确匹配（忽略大小写和空格）
+    const normalizedDataKey = dataKey.toLowerCase().replace(/\s+/g, '');
+    for (const placeholder of templatePlaceholders) {
+      const normalizedPlaceholder = placeholder.toLowerCase().replace(/\s+/g, '');
+      if (normalizedDataKey === normalizedPlaceholder) {
+        return placeholder;
+      }
+    }
+
+    // 2. 包含匹配
+    for (const placeholder of templatePlaceholders) {
+      if (placeholder.includes(dataKey) || dataKey.includes(placeholder)) {
+        return placeholder;
+      }
+    }
+
+    // 3. 相似度匹配（简单的字符串相似度）
+    let bestMatch = null;
+    let bestScore = 0;
+
+    for (const placeholder of templatePlaceholders) {
+      const score = this.calculateStringSimilarity(dataKey, placeholder);
+      if (score > bestScore && score > 0.6) { // 相似度阈值
+        bestScore = score;
+        bestMatch = placeholder;
+      }
+    }
+
+    return bestMatch;
+  }
+
+  /**
+   * 查找最匹配的数据键
+   */
+  private static findBestDataKeyMatch(templateKey: string, dataKeys: string[]): string | null {
+    return this.findBestPlaceholderMatch(templateKey, dataKeys);
+  }
+
+  /**
+   * 计算字符串相似度（简单的Jaccard相似度）
+   */
+  private static calculateStringSimilarity(str1: string, str2: string): number {
+    const set1 = new Set(str1.toLowerCase().split(''));
+    const set2 = new Set(str2.toLowerCase().split(''));
+
+    const arr1 = Array.from(set1);
+    const arr2 = Array.from(set2);
+
+    const intersection = new Set(arr1.filter(x => set2.has(x)));
+    const union = new Set([...arr1, ...arr2]);
+
+    return intersection.size / union.size;
   }
   
   /**
