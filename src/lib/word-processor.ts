@@ -872,55 +872,155 @@ export class WordProcessor {
   }
 
   /**
-   * 从内容中智能推断占位符
+   * 从内容中智能推断占位符（专业合同模板版）
    */
   private static inferPlaceholdersFromContent(xmlContent: string): string[] {
     const inferred: string[] = [];
 
-    // 已知的13个字段
-    const knownFields = [
-      "甲方公司名称", "乙方公司名称", "合同类型", "合同金额", "签署日期",
-      "甲方联系人", "甲方电话", "乙方联系人", "联系邮箱", "付款方式",
-      "产品清单", "是否包含保险", "特别约定"
+    // 提取所有文本内容
+    const textElements = xmlContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
+    const allText = textElements.map(t => t.replace(/<w:t[^>]*>([^<]+)<\/w:t>/, '$1')).join(' ');
+
+    console.log('[WordProcessor] 开始专业合同模板字段推断...');
+    console.log(`[WordProcessor] 文档文本长度: ${allText.length} 字符`);
+
+    // 专业合同模板的字段映射规则
+    const professionalFieldMappings = [
+      {
+        systemField: "甲方公司名称",
+        patterns: ["卖方", "SELLER", "卖方公司", "卖方名称"],
+        contextPatterns: ["卖方SELLER\\s*[：:]\\s*\\{([^}]+)\\}"]
+      },
+      {
+        systemField: "乙方公司名称",
+        patterns: ["买方", "BUYER", "买方公司", "买方名称"],
+        contextPatterns: ["买方BUYER\\s*[：:]\\s*\\{([^}]+)\\}", "{{买方BUYER:\\s*([^}]+)\\s*}}"]
+      },
+      {
+        systemField: "合同类型",
+        patterns: ["合同", "CONTRACT", "销售合同", "SALES CONTRACT"],
+        contextPatterns: ["SALES\\s+CONTRACT", "销售合同"]
+      },
+      {
+        systemField: "合同金额",
+        patterns: ["合同金额", "总金额", "TOTAL AMOUNT", "合同总金额"],
+        contextPatterns: ["合同总金额\\s*\\(USD\\)", "TOTAL\\s+AMOUNT\\s+OF\\s+CONTRACT"]
+      },
+      {
+        systemField: "签署日期",
+        patterns: ["Date", "日期", "签署日期", "合同日期"],
+        contextPatterns: ["Date:\\s*(\\d{4}\\.\\d{1,2}\\.\\d{1,2})", "签署日期"]
+      },
+      {
+        systemField: "甲方联系人",
+        patterns: ["联系人", "CONTACT", "卖方联系人"],
+        contextPatterns: ["联系人", "CONTACT"]
+      },
+      {
+        systemField: "甲方电话",
+        patterns: ["电话", "TEL", "PHONE", "联系电话"],
+        contextPatterns: ["电话", "TEL", "PHONE"]
+      },
+      {
+        systemField: "乙方联系人",
+        patterns: ["买方联系人", "BUYER CONTACT"],
+        contextPatterns: ["买方联系人"]
+      },
+      {
+        systemField: "联系邮箱",
+        patterns: ["邮箱", "EMAIL", "E-MAIL"],
+        contextPatterns: ["邮箱", "EMAIL"]
+      },
+      {
+        systemField: "付款方式",
+        patterns: ["付款方式", "PAYMENT", "Terms of payment", "支付方式"],
+        contextPatterns: ["付款方式", "Terms\\s+of\\s+payment"]
+      },
+      {
+        systemField: "产品清单",
+        patterns: ["产品", "PRODUCT", "货物明细", "Details of goods"],
+        contextPatterns: ["货物明细", "Details\\s+of\\s+goods"]
+      },
+      {
+        systemField: "是否包含保险",
+        patterns: ["保险", "INSURANCE"],
+        contextPatterns: ["保险", "Insurance"]
+      },
+      {
+        systemField: "特别约定",
+        patterns: ["约定", "条款", "TERMS", "特别条款"],
+        contextPatterns: ["特别约定", "约定", "条款"]
+      }
     ];
 
-    // 检查每个已知字段是否在文档中出现
-    knownFields.forEach(field => {
-      // 检查多种可能的格式
-      const patterns = [
-        new RegExp(`\\{\\{\\s*${field}\\s*\\}\\}`, 'g'),  // {{字段名}}
-        new RegExp(`\\{\\s*${field}\\s*\\}`, 'g'),        // {字段名}
-        new RegExp(`${field}\\s*[:：]`, 'g'),              // 字段名: 或 字段名：
-        new RegExp(`${field}`, 'g'),                       // 直接出现
-      ];
+    // 对每个字段进行智能推断
+    professionalFieldMappings.forEach(mapping => {
+      let fieldFound = false;
 
-      let found = false;
-      for (const pattern of patterns) {
-        if (pattern.test(xmlContent)) {
-          inferred.push(field);
-          found = true;
+      // 1. 检查上下文模式
+      for (const contextPattern of mapping.contextPatterns) {
+        const regex = new RegExp(contextPattern, 'gi');
+        if (regex.test(allText)) {
+          inferred.push(mapping.systemField);
+          fieldFound = true;
+          console.log(`[WordProcessor] 通过上下文模式找到字段: ${mapping.systemField} (模式: ${contextPattern})`);
           break;
         }
       }
 
-      // 如果没有找到完整字段名，尝试查找关键词
-      if (!found) {
-        const keywords = field.split(/[方公司类型金额日期联系人电话邮箱方式清单保险约定]/);
-        let keywordFound = 0;
-        keywords.forEach(keyword => {
-          if (keyword.length > 0 && xmlContent.includes(keyword)) {
-            keywordFound++;
+      // 2. 如果上下文模式没找到，检查基本模式
+      if (!fieldFound) {
+        for (const pattern of mapping.patterns) {
+          if (allText.includes(pattern)) {
+            inferred.push(mapping.systemField);
+            fieldFound = true;
+            console.log(`[WordProcessor] 通过基本模式找到字段: ${mapping.systemField} (模式: ${pattern})`);
+            break;
           }
-        });
-
-        // 如果找到足够多的关键词，推断这个字段存在
-        if (keywordFound >= Math.ceil(keywords.length / 2)) {
-          inferred.push(field);
         }
       }
     });
 
-    return Array.from(new Set(inferred)); // 去重
+    // 3. 特殊处理：查找表格中的数值字段
+    this.inferNumericFieldsFromTables(xmlContent, inferred);
+
+    const uniqueInferred = Array.from(new Set(inferred));
+    console.log(`[WordProcessor] 专业合同模板字段推断完成，共推断出 ${uniqueInferred.length} 个字段:`, uniqueInferred);
+
+    return uniqueInferred;
+  }
+
+  /**
+   * 从表格中推断数值字段
+   */
+  private static inferNumericFieldsFromTables(xmlContent: string, inferred: string[]): void {
+    // 查找表格中的数值模式
+    const tablePattern = /<w:tbl[^>]*>.*?<\/w:tbl>/g;
+    let match;
+
+    while ((match = tablePattern.exec(xmlContent)) !== null) {
+      const tableContent = match[0];
+      const textElements = tableContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
+      const tableText = textElements.map(t => t.replace(/<w:t[^>]*>([^<]+)<\/w:t>/, '$1')).join(' ');
+
+      // 查找金额相关模式
+      const amountPatterns = [
+        /\d+\s*USD/gi,
+        /USD\s*\d+/gi,
+        /\d{4,}/g, // 4位以上数字，可能是金额
+        /合同.*?金额/gi,
+        /总.*?金额/gi
+      ];
+
+      amountPatterns.forEach(pattern => {
+        if (pattern.test(tableText)) {
+          if (!inferred.includes("合同金额")) {
+            inferred.push("合同金额");
+            console.log(`[WordProcessor] 从表格中推断出合同金额字段`);
+          }
+        }
+      });
+    }
   }
 
   /**
@@ -1365,11 +1465,22 @@ export class WordProcessor {
   }
 
   /**
-   * 在表格中替换字段
+   * 在表格中替换字段（专业合同模板版）
    */
   private static replaceInTables(xmlContent: string, fieldName: string, value: string): { xml: string; replaced: boolean } {
     let xml = xmlContent;
     let replaced = false;
+
+    console.log(`[WordProcessor] 开始表格字段替换: ${fieldName} -> ${value}`);
+
+    // 专业合同模板的字段替换规则
+    const professionalReplacementRules = this.getProfessionalReplacementRules();
+    const rule = professionalReplacementRules[fieldName];
+
+    if (!rule) {
+      console.log(`[WordProcessor] 未找到字段 ${fieldName} 的专业替换规则`);
+      return { xml, replaced: false };
+    }
 
     // 查找所有表格
     const tablePattern = /<w:tbl[^>]*>.*?<\/w:tbl>/g;
@@ -1377,56 +1488,171 @@ export class WordProcessor {
 
     while ((match = tablePattern.exec(xmlContent)) !== null) {
       const tableContent = match[0];
+      const textElements = tableContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
+      const tableText = textElements.map(t => t.replace(/<w:t[^>]*>([^<]+)<\/w:t>/, '$1')).join(' ');
 
-      // 检查表格是否包含字段名
-      if (tableContent.includes(fieldName)) {
-        // 在表格中查找并替换
+      // 检查表格是否包含相关模式
+      let shouldProcessTable = false;
+      for (const pattern of rule.searchPatterns) {
+        const regex = new RegExp(pattern, 'gi');
+        if (regex.test(tableText)) {
+          shouldProcessTable = true;
+          console.log(`[WordProcessor] 表格匹配模式: ${pattern}`);
+          break;
+        }
+      }
+
+      if (shouldProcessTable) {
         let newTableContent = tableContent;
 
-        // 替换各种格式的占位符
-        const patterns = [
-          new RegExp(`\\{\\{\\s*${fieldName}\\s*\\}\\}`, 'g'),
-          new RegExp(`\\{\\s*${fieldName}\\s*\\}`, 'g'),
-          new RegExp(`\\[\\s*${fieldName}\\s*\\]`, 'g'),
-        ];
-
-        patterns.forEach(pattern => {
-          if (pattern.test(newTableContent)) {
-            newTableContent = newTableContent.replace(pattern, value);
+        // 应用替换规则
+        for (const replaceRule of rule.replacePatterns) {
+          const regex = new RegExp(replaceRule.pattern, replaceRule.flags || 'gi');
+          if (regex.test(newTableContent)) {
+            newTableContent = newTableContent.replace(regex, replaceRule.replacement.replace('$VALUE', value));
             replaced = true;
+            console.log(`[WordProcessor] 应用替换规则: ${replaceRule.pattern} -> ${replaceRule.replacement}`);
           }
-        });
+        }
 
-        // 如果找到了字段名但没有标准格式，尝试直接替换
-        if (!replaced && newTableContent.includes(fieldName)) {
-          // 查找包含字段名的单元格
-          const cellPattern = /<w:tc[^>]*>.*?<\/w:tc>/g;
-          let cellMatch;
-
-          while ((cellMatch = cellPattern.exec(tableContent)) !== null) {
-            const cellContent = cellMatch[0];
-
-            if (cellContent.includes(fieldName)) {
-              // 检查是否是纯字段名的单元格
-              const textMatches = cellContent.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
-              if (textMatches) {
-                const allText = textMatches.map(t => t.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1')).join('').trim();
-
-                if (allText === fieldName || (allText.includes(fieldName) && allText.length < fieldName.length + 10)) {
-                  const newCellContent = cellContent.replace(
-                    /<w:t[^>]*>([^<]*)<\/w:t>/g,
-                    `<w:t>${value}</w:t>`
-                  );
-                  newTableContent = newTableContent.replace(cellContent, newCellContent);
-                  replaced = true;
-                }
-              }
-            }
+        // 如果标准规则没有匹配，尝试智能替换
+        if (!replaced) {
+          const smartResult = this.smartReplaceInTableCells(tableContent, fieldName, value, rule);
+          if (smartResult.replaced) {
+            newTableContent = smartResult.xml;
+            replaced = true;
           }
         }
 
         if (replaced) {
           xml = xml.replace(tableContent, newTableContent);
+        }
+      }
+    }
+
+    console.log(`[WordProcessor] 表格字段替换结果: ${fieldName} -> ${replaced ? '成功' : '失败'}`);
+    return { xml, replaced };
+  }
+
+  /**
+   * 获取专业合同模板的替换规则
+   */
+  private static getProfessionalReplacementRules(): Record<string, any> {
+    return {
+      "甲方公司名称": {
+        searchPatterns: ["卖方", "SELLER", "卖方公司"],
+        replacePatterns: [
+          {
+            pattern: "卖方SELLER\\s*[：:]\\s*\\{([^}]+)\\}",
+            replacement: "卖方SELLER ： { $VALUE }",
+            flags: "gi"
+          },
+          {
+            pattern: "(<w:t[^>]*>)([^<]*卖方[^<]*)(</w:t>)",
+            replacement: "$1$VALUE$3",
+            flags: "gi"
+          }
+        ]
+      },
+      "乙方公司名称": {
+        searchPatterns: ["买方", "BUYER", "买方公司"],
+        replacePatterns: [
+          {
+            pattern: "\\{\\{买方BUYER:\\s*([^}]*)\\s*\\}\\}",
+            replacement: "{{买方BUYER: $VALUE }}",
+            flags: "gi"
+          },
+          {
+            pattern: "买方BUYER\\s*[：:]\\s*\\{([^}]+)\\}",
+            replacement: "买方BUYER ： { $VALUE }",
+            flags: "gi"
+          }
+        ]
+      },
+      "合同金额": {
+        searchPatterns: ["合同金额", "总金额", "TOTAL AMOUNT", "合同总金额"],
+        replacePatterns: [
+          {
+            pattern: "(合同总金额\\s*\\(USD\\)\\s*TOTAL\\s+AMOUNT\\s+OF\\s+CONTRACT\\s*[：:]\\s*)([^\\s]+)",
+            replacement: "$1$VALUE",
+            flags: "gi"
+          },
+          {
+            pattern: "(TOTAL\\s+AMOUNT\\s+OF\\s+CONTRACT\\s*[：:]\\s*)([^\\s]+)",
+            replacement: "$1$VALUE",
+            flags: "gi"
+          }
+        ]
+      },
+      "付款方式": {
+        searchPatterns: ["付款方式", "PAYMENT", "Terms of payment"],
+        replacePatterns: [
+          {
+            pattern: "(付款方式[^【]*【[^】]*】)([^【]*)",
+            replacement: "$1$VALUE",
+            flags: "gi"
+          }
+        ]
+      },
+      "签署日期": {
+        searchPatterns: ["Date", "日期", "签署日期"],
+        replacePatterns: [
+          {
+            pattern: "(Date:\\s*)(\\d{4}\\.\\d{1,2}\\.\\d{1,2})",
+            replacement: "$1$VALUE",
+            flags: "gi"
+          }
+        ]
+      }
+    };
+  }
+
+  /**
+   * 在表格单元格中进行智能替换
+   */
+  private static smartReplaceInTableCells(tableContent: string, fieldName: string, value: string, rule: any): { xml: string; replaced: boolean } {
+    let xml = tableContent;
+    let replaced = false;
+
+    // 查找包含相关模式的单元格
+    const cellPattern = /<w:tc[^>]*>.*?<\/w:tc>/g;
+    let cellMatch;
+
+    while ((cellMatch = cellPattern.exec(tableContent)) !== null) {
+      const cellContent = cellMatch[0];
+      const textElements = cellContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
+      const cellText = textElements.map(t => t.replace(/<w:t[^>]*>([^<]+)<\/w:t>/, '$1')).join(' ');
+
+      // 检查单元格是否包含相关模式
+      for (const pattern of rule.searchPatterns) {
+        if (cellText.includes(pattern)) {
+          // 尝试智能替换
+          let newCellContent = cellContent;
+
+          // 如果单元格包含空格占位符，替换它们
+          if (/\s{5,}/.test(cellText)) {
+            const spaceRegex = new RegExp('(<w:t[^>]*>)([^<]*\\s{5,}[^<]*)(</w:t>)', 'g');
+            newCellContent = newCellContent.replace(
+              spaceRegex,
+              `$1$2 ${value}$3`
+            );
+            replaced = true;
+          }
+
+          // 如果单元格只包含模式关键词，在其后添加值
+          else if (cellText.trim() === pattern) {
+            const textRegex = new RegExp('(<w:t[^>]*>)([^<]*)(</w:t>)', 'g');
+            newCellContent = newCellContent.replace(
+              textRegex,
+              `$1$2: ${value}$3`
+            );
+            replaced = true;
+          }
+
+          if (replaced) {
+            xml = xml.replace(cellContent, newCellContent);
+            break;
+          }
         }
       }
     }
