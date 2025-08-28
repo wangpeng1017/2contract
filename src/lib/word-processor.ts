@@ -135,7 +135,7 @@ export class WordProcessor {
   }
   
   /**
-   * 从XML内容中提取占位符
+   * 从XML内容中提取占位符（使用增强算法）
    */
   private static extractPlaceholders(xmlContent: string): PlaceholderInfo[] {
     const placeholders: PlaceholderInfo[] = [];
@@ -148,53 +148,49 @@ export class WordProcessor {
         return this.getDefaultPlaceholders();
       }
 
-      // 匹配 {{placeholder}} 格式的占位符
-      // 考虑到Word可能会将占位符分割到多个XML节点中，我们需要更复杂的匹配
-      // 修复：只使用双花括号格式，避免重复识别
-      const patterns = [
-        /\{\{([^}]+)\}\}/g,  // 标准双花括号格式
-      ];
+      console.log('[WordProcessor] 开始使用增强算法提取占位符...');
 
-      patterns.forEach(pattern => {
-        let match;
-        while ((match = pattern.exec(xmlContent)) !== null) {
-          const placeholderName = match[1].trim();
+      // 使用增强的占位符识别算法
+      const extractedPlaceholderNames = this.extractAllPlaceholdersFromXml(xmlContent);
 
-          // 过滤掉XML标签和无效内容
-          if (placeholderName &&
-              !placeholderName.includes('<') &&
-              !placeholderName.includes('>') &&
-              !placeholderName.includes('w:') &&
-              placeholderName.length > 0 &&
-              placeholderName.length < 100 && // 防止异常长的内容
-              !placeholderSet.has(placeholderName)) {
+      console.log(`[WordProcessor] 增强算法识别到 ${extractedPlaceholderNames.length} 个占位符:`, extractedPlaceholderNames);
 
-            placeholderSet.add(placeholderName);
+      // 将识别到的占位符名称转换为PlaceholderInfo对象
+      extractedPlaceholderNames.forEach(placeholderName => {
+        if (placeholderName &&
+            !placeholderName.includes('<') &&
+            !placeholderName.includes('>') &&
+            !placeholderName.includes('w:') &&
+            placeholderName.length > 0 &&
+            placeholderName.length < 100 && // 防止异常长的内容
+            !placeholderSet.has(placeholderName)) {
 
-            const placeholderType = this.inferPlaceholderType(placeholderName);
-            const placeholder: PlaceholderInfo = {
-              name: placeholderName,
-              type: placeholderType,
-              required: true, // MVP阶段默认都是必填
-              description: this.generatePlaceholderDescription(placeholderName),
-              options: this.generatePlaceholderOptions(placeholderName, placeholderType),
-              validation: this.generatePlaceholderValidation(placeholderName, placeholderType),
-              placeholder: this.generatePlaceholderText(placeholderName, placeholderType),
-              helpText: this.generateHelpText(placeholderName, placeholderType),
-              tableConfig: placeholderType === 'table' ? this.generateTableConfig(placeholderName) : undefined
-            };
+          placeholderSet.add(placeholderName);
 
-            placeholders.push(placeholder);
-          }
+          const placeholderType = this.inferPlaceholderType(placeholderName);
+          const placeholder: PlaceholderInfo = {
+            name: placeholderName,
+            type: placeholderType,
+            required: true, // MVP阶段默认都是必填
+            description: this.generatePlaceholderDescription(placeholderName),
+            options: this.generatePlaceholderOptions(placeholderName, placeholderType),
+            validation: this.generatePlaceholderValidation(placeholderName, placeholderType),
+            placeholder: this.generatePlaceholderText(placeholderName, placeholderType),
+            helpText: this.generateHelpText(placeholderName, placeholderType),
+            tableConfig: placeholderType === 'table' ? this.generateTableConfig(placeholderName) : undefined
+          };
+
+          placeholders.push(placeholder);
         }
       });
 
       // 如果没有找到占位符，返回一些示例占位符用于演示
       if (placeholders.length === 0) {
-        console.log('[WordProcessor] 未找到占位符，返回示例占位符');
+        console.log('[WordProcessor] 增强算法也未找到占位符，返回示例占位符');
         return this.getDefaultPlaceholders();
       }
 
+      console.log(`[WordProcessor] 最终生成 ${placeholders.length} 个占位符对象`);
       return placeholders.sort((a, b) => a.name.localeCompare(b.name));
 
     } catch (error) {
