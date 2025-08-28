@@ -1,6 +1,6 @@
 /**
- * 语音识别服务
- * 支持Web Speech API和百度语音API的混合方案
+ * 基于Web Speech API的语音识别服务
+ * 专门优化的Web Speech API实现
  */
 
 export interface SpeechRecognitionResult {
@@ -16,47 +16,109 @@ export interface SpeechRecognitionOptions {
   maxAlternatives?: number;
 }
 
-export interface SpeechRecognitionProvider {
-  isSupported(): boolean;
-  start(options?: SpeechRecognitionOptions): Promise<void>;
-  stop(): void;
-  onResult(callback: (result: SpeechRecognitionResult) => void): void;
-  onError(callback: (error: string) => void): void;
-  onEnd(callback: () => void): void;
-}
-
 /**
- * Web Speech API 实现
+ * 专门优化的Web Speech API语音识别类
  */
-class WebSpeechProvider implements SpeechRecognitionProvider {
+export class WebSpeechRecognition {
   private recognition: SpeechRecognition | null = null;
   private resultCallback?: (result: SpeechRecognitionResult) => void;
   private errorCallback?: (error: string) => void;
   private endCallback?: () => void;
+  private startCallback?: () => void;
+  private isListening: boolean = false;
 
-  isSupported(): boolean {
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  /**
+   * 检查浏览器是否支持Web Speech API
+   */
+  static isSupported(): boolean {
+    return !!(
+      typeof window !== 'undefined' &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition)
+    );
   }
 
+  /**
+   * 获取浏览器支持信息
+   */
+  static getBrowserSupport(): {
+    supported: boolean;
+    browser: string;
+    version?: string;
+  } {
+    if (typeof window === 'undefined') {
+      return { supported: false, browser: 'server' };
+    }
+
+    const userAgent = navigator.userAgent;
+
+    if (window.SpeechRecognition) {
+      return {
+        supported: true,
+        browser: 'chrome',
+        version: userAgent.match(/Chrome\/(\d+)/)?.[1]
+      };
+    } else if (window.webkitSpeechRecognition) {
+      return {
+        supported: true,
+        browser: 'webkit',
+        version: userAgent.match(/Version\/(\d+)/)?.[1]
+      };
+    }
+
+    // 检测具体浏览器
+    if (userAgent.includes('Firefox')) {
+      return { supported: false, browser: 'firefox' };
+    } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+      return { supported: false, browser: 'safari' };
+    } else if (userAgent.includes('Edge')) {
+      return { supported: false, browser: 'edge' };
+    }
+
+    return { supported: false, browser: 'unknown' };
+  }
+
+  /**
+   * 开始语音识别
+   */
   async start(options: SpeechRecognitionOptions = {}): Promise<void> {
-    if (!this.isSupported()) {
-      throw new Error('Web Speech API not supported');
+    if (!WebSpeechRecognition.isSupported()) {
+      throw new Error('当前浏览器不支持Web Speech API');
+    }
+
+    if (this.isListening) {
+      console.warn('[WebSpeechRecognition] 已在监听中，忽略重复启动');
+      return;
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     this.recognition = new SpeechRecognition();
 
-    // 配置识别参数
+    // 优化的识别参数配置
     this.recognition.lang = options.language || 'zh-CN';
     this.recognition.continuous = options.continuous ?? true;
     this.recognition.interimResults = options.interimResults ?? true;
-    this.recognition.maxAlternatives = options.maxAlternatives || 1;
+    this.recognition.maxAlternatives = options.maxAlternatives || 3; // 增加备选项
 
     // 设置事件监听器
+    this.recognition.onstart = () => {
+      this.isListening = true;
+      console.log('[WebSpeechRecognition] 开始语音识别');
+      if (this.startCallback) {
+        this.startCallback();
+      }
+    };
+
     this.recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
-      const transcript = result[0].transcript;
+      const transcript = result[0].transcript.trim();
       const confidence = result[0].confidence || 0.8;
+
+      // 过滤掉过短的结果
+      if (transcript.length < 1) {
+        return;
+      }
+
+      console.log(`[WebSpeechRecognition] 识别结果: "${transcript}", 置信度: ${confidence}, 最终: ${result.isFinal}`);
 
       if (this.resultCallback) {
         this.resultCallback({
@@ -68,23 +130,41 @@ class WebSpeechProvider implements SpeechRecognitionProvider {
     };
 
     this.recognition.onerror = (event) => {
+      this.isListening = false;
       let errorMessage = '语音识别出错';
+      let shouldRetry = false;
+
       switch (event.error) {
         case 'no-speech':
           errorMessage = '未检测到语音，请重试';
+          shouldRetry = true;
           break;
         case 'audio-capture':
-          errorMessage = '无法访问麦克风，请检查权限';
+          errorMessage = '无法访问麦克风，请检查设备连接';
           break;
         case 'not-allowed':
-          errorMessage = '麦克风权限被拒绝';
+          errorMessage = '麦克风权限被拒绝，请在浏览器设置中允许麦克风访问';
           break;
         case 'network':
-          errorMessage = '网络错误，请检查网络连接';
+          errorMessage = '网络连接错误，请检查网络状态';
+          shouldRetry = true;
+          break;
+        case 'service-not-allowed':
+          errorMessage = '语音识别服务不可用';
+          break;
+        case 'bad-grammar':
+          errorMessage = '语法识别错误';
+          shouldRetry = true;
+          break;
+        case 'language-not-supported':
+          errorMessage = '不支持当前语言设置';
           break;
         default:
           errorMessage = `语音识别错误: ${event.error}`;
+          shouldRetry = true;
       }
+
+      console.error(`[WebSpeechRecognition] 错误: ${event.error} - ${errorMessage}`);
 
       if (this.errorCallback) {
         this.errorCallback(errorMessage);
@@ -92,241 +172,193 @@ class WebSpeechProvider implements SpeechRecognitionProvider {
     };
 
     this.recognition.onend = () => {
+      this.isListening = false;
+      console.log('[WebSpeechRecognition] 语音识别结束');
       if (this.endCallback) {
         this.endCallback();
       }
     };
 
     // 开始识别
-    this.recognition.start();
-  }
-
-  stop(): void {
-    if (this.recognition) {
-      this.recognition.stop();
-    }
-  }
-
-  onResult(callback: (result: SpeechRecognitionResult) => void): void {
-    this.resultCallback = callback;
-  }
-
-  onError(callback: (error: string) => void): void {
-    this.errorCallback = callback;
-  }
-
-  onEnd(callback: () => void): void {
-    this.endCallback = callback;
-  }
-}
-
-/**
- * 百度语音API实现（备选方案）
- */
-class BaiduSpeechProvider implements SpeechRecognitionProvider {
-  private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private resultCallback?: (result: SpeechRecognitionResult) => void;
-  private errorCallback?: (error: string) => void;
-  private endCallback?: () => void;
-
-  isSupported(): boolean {
-    return !!(
-      typeof navigator !== 'undefined' &&
-      navigator.mediaDevices &&
-      typeof navigator.mediaDevices.getUserMedia === 'function' &&
-      typeof window !== 'undefined' &&
-      'MediaRecorder' in window
-    );
-  }
-
-  async start(options: SpeechRecognitionOptions = {}): Promise<void> {
-    if (!this.isSupported()) {
-      throw new Error('MediaRecorder not supported');
-    }
-
     try {
-      // 获取麦克风权限
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // 创建录音器
-      this.mediaRecorder = new MediaRecorder(stream);
-      this.audioChunks = [];
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
-      };
-
-      this.mediaRecorder.onstop = async () => {
-        try {
-          const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
-          const result = await this.recognizeWithBaidu(audioBlob);
-          
-          if (this.resultCallback) {
-            this.resultCallback({
-              text: result,
-              confidence: 0.85, // 百度API通常有较高准确率
-              isFinal: true
-            });
-          }
-        } catch (error) {
-          if (this.errorCallback) {
-            this.errorCallback(`语音识别失败: ${error instanceof Error ? error.message : '未知错误'}`);
-          }
-        } finally {
-          // 停止音频流
-          stream.getTracks().forEach(track => track.stop());
-          if (this.endCallback) {
-            this.endCallback();
-          }
-        }
-      };
-
-      // 开始录音
-      this.mediaRecorder.start();
-      
-      // 设置自动停止（10秒后）
-      setTimeout(() => {
-        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-          this.mediaRecorder.stop();
-        }
-      }, 10000);
-
+      this.recognition.start();
     } catch (error) {
-      if (this.errorCallback) {
-        this.errorCallback(`无法访问麦克风: ${error instanceof Error ? error.message : '未知错误'}`);
-      }
+      this.isListening = false;
+      throw new Error(`启动语音识别失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
-  }
-
-  stop(): void {
-    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-      this.mediaRecorder.stop();
-    }
-  }
-
-  private async recognizeWithBaidu(audioBlob: Blob): Promise<string> {
-    try {
-      // 创建FormData上传音频文件
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.wav');
-
-      // 调用后端语音识别API
-      const response = await fetch('/api/speech/recognize', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error?.message || '语音识别失败');
-      }
-
-      return result.data.text;
-    } catch (error) {
-      console.error('[BaiduSpeechProvider] 识别失败:', error);
-      throw new Error(`语音识别失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    }
-  }
-
-  onResult(callback: (result: SpeechRecognitionResult) => void): void {
-    this.resultCallback = callback;
-  }
-
-  onError(callback: (error: string) => void): void {
-    this.errorCallback = callback;
-  }
-
-  onEnd(callback: () => void): void {
-    this.endCallback = callback;
-  }
-}
-
-/**
- * 语音识别管理器
- * 自动选择最佳的语音识别方案
- */
-export class SpeechRecognitionManager {
-  private provider: SpeechRecognitionProvider;
-
-  constructor() {
-    // 智能选择语音识别提供商
-    const webSpeechProvider = new WebSpeechProvider();
-    const baiduProvider = new BaiduSpeechProvider();
-
-    if (webSpeechProvider.isSupported()) {
-      console.log('[SpeechRecognition] 使用 Web Speech API');
-      this.provider = webSpeechProvider;
-    } else if (baiduProvider.isSupported()) {
-      console.log('[SpeechRecognition] 使用百度语音API（备选方案）');
-      this.provider = baiduProvider;
-    } else {
-      throw new Error('当前浏览器不支持语音识别功能');
-    }
-  }
-
-  /**
-   * 检查是否支持语音识别
-   */
-  static isSupported(): boolean {
-    const webSpeechProvider = new WebSpeechProvider();
-    const baiduProvider = new BaiduSpeechProvider();
-    return webSpeechProvider.isSupported() || baiduProvider.isSupported();
-  }
-
-  /**
-   * 开始语音识别
-   */
-  async start(options?: SpeechRecognitionOptions): Promise<void> {
-    return this.provider.start(options);
   }
 
   /**
    * 停止语音识别
    */
   stop(): void {
-    this.provider.stop();
+    if (this.recognition && this.isListening) {
+      console.log('[WebSpeechRecognition] 手动停止语音识别');
+      this.recognition.stop();
+      this.isListening = false;
+    }
   }
 
   /**
-   * 监听识别结果
+   * 强制中止语音识别
+   */
+  abort(): void {
+    if (this.recognition && this.isListening) {
+      console.log('[WebSpeechRecognition] 强制中止语音识别');
+      this.recognition.abort();
+      this.isListening = false;
+    }
+  }
+
+  /**
+   * 检查是否正在监听
+   */
+  isActive(): boolean {
+    return this.isListening;
+  }
+
+  /**
+   * 设置开始回调
+   */
+  onStart(callback: () => void): void {
+    this.startCallback = callback;
+  }
+
+  /**
+   * 设置结果回调
    */
   onResult(callback: (result: SpeechRecognitionResult) => void): void {
-    this.provider.onResult(callback);
+    this.resultCallback = callback;
   }
 
   /**
-   * 监听错误事件
+   * 设置错误回调
    */
   onError(callback: (error: string) => void): void {
-    this.provider.onError(callback);
+    this.errorCallback = callback;
   }
 
   /**
-   * 监听识别结束事件
+   * 设置结束回调
    */
   onEnd(callback: () => void): void {
-    this.provider.onEnd(callback);
+    this.endCallback = callback;
   }
 
   /**
-   * 获取当前使用的提供商类型
+   * 清理资源
    */
-  getProviderType(): string {
-    if (this.provider instanceof WebSpeechProvider) {
-      return 'WebSpeech';
-    } else if (this.provider instanceof BaiduSpeechProvider) {
-      return 'Baidu';
+  cleanup(): void {
+    this.stop();
+    this.recognition = null;
+    this.resultCallback = undefined;
+    this.errorCallback = undefined;
+    this.endCallback = undefined;
+    this.startCallback = undefined;
+  }
+}
+
+
+
+/**
+ * Web Speech API 语音识别工具函数
+ */
+export class SpeechRecognitionUtils {
+  /**
+   * 获取推荐的语音识别配置
+   */
+  static getRecommendedConfig(): SpeechRecognitionOptions {
+    return {
+      language: 'zh-CN',
+      continuous: true,
+      interimResults: true,
+      maxAlternatives: 3
+    };
+  }
+
+  /**
+   * 获取支持的语言列表
+   */
+  static getSupportedLanguages(): Array<{code: string, name: string}> {
+    return [
+      { code: 'zh-CN', name: '中文（普通话）' },
+      { code: 'zh-TW', name: '中文（台湾）' },
+      { code: 'zh-HK', name: '中文（香港）' },
+      { code: 'en-US', name: 'English (US)' },
+      { code: 'en-GB', name: 'English (UK)' },
+      { code: 'ja-JP', name: '日本語' },
+      { code: 'ko-KR', name: '한국어' }
+    ];
+  }
+
+  /**
+   * 检测用户的首选语言
+   */
+  static detectPreferredLanguage(): string {
+    const browserLang = navigator.language || 'zh-CN';
+    const supportedCodes = this.getSupportedLanguages().map(lang => lang.code);
+
+    // 精确匹配
+    if (supportedCodes.includes(browserLang)) {
+      return browserLang;
     }
-    return 'Unknown';
+
+    // 语言前缀匹配
+    const langPrefix = browserLang.split('-')[0];
+    const prefixMatch = supportedCodes.find(code => code.startsWith(langPrefix));
+
+    return prefixMatch || 'zh-CN';
+  }
+
+  /**
+   * 格式化识别结果文本
+   */
+  static formatRecognitionText(text: string): string {
+    return text
+      .trim()
+      .replace(/\s+/g, ' ') // 合并多个空格
+      .replace(/[。，！？；：]/g, match => match + ' ') // 中文标点后加空格
+      .trim();
+  }
+
+  /**
+   * 评估识别结果质量
+   */
+  static evaluateResultQuality(result: SpeechRecognitionResult): {
+    quality: 'high' | 'medium' | 'low';
+    score: number;
+    suggestions: string[];
+  } {
+    const { text, confidence } = result;
+    const suggestions: string[] = [];
+    let score = confidence;
+
+    // 长度评估
+    if (text.length < 2) {
+      score -= 0.3;
+      suggestions.push('识别文本过短，建议重新录音');
+    } else if (text.length > 100) {
+      score -= 0.1;
+      suggestions.push('识别文本较长，建议分段录音');
+    }
+
+    // 置信度评估
+    if (confidence < 0.6) {
+      suggestions.push('识别置信度较低，建议在安静环境中重试');
+    }
+
+    // 质量等级
+    let quality: 'high' | 'medium' | 'low';
+    if (score >= 0.8) {
+      quality = 'high';
+    } else if (score >= 0.6) {
+      quality = 'medium';
+    } else {
+      quality = 'low';
+      suggestions.push('建议检查麦克风设备或网络连接');
+    }
+
+    return { quality, score, suggestions };
   }
 }
 
@@ -344,6 +376,8 @@ declare global {
     maxAlternatives: number;
     start(): void;
     stop(): void;
+    abort(): void;
+    onstart: (() => void) | null;
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
     onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
     onend: (() => void) | null;
