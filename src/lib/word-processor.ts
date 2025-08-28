@@ -732,12 +732,12 @@ export class WordProcessor {
   }
 
   /**
-   * 从XML中提取所有可能的占位符格式（增强版）
+   * 从XML中提取所有可能的占位符格式（专业版）
    */
   private static extractAllPlaceholdersFromXml(xmlContent: string): string[] {
     const placeholders = new Set<string>();
 
-    console.log('[WordProcessor] 开始增强占位符识别...');
+    console.log('[WordProcessor] 开始专业级占位符识别...');
 
     // 1. 标准双花括号格式
     const doublePattern = /\{\{([^}]+)\}\}/g;
@@ -760,7 +760,21 @@ export class WordProcessor {
       }
     }
 
-    // 3. Word域代码格式 (MERGEFIELD)
+    // 3. Word内容控件 (Content Controls)
+    const contentControlPlaceholders = this.extractContentControlPlaceholders(xmlContent);
+    contentControlPlaceholders.forEach(p => {
+      placeholders.add(p);
+      console.log(`[WordProcessor] 找到内容控件占位符: ${p}`);
+    });
+
+    // 4. Word书签 (Bookmarks)
+    const bookmarkPlaceholders = this.extractBookmarkPlaceholders(xmlContent);
+    bookmarkPlaceholders.forEach(p => {
+      placeholders.add(p);
+      console.log(`[WordProcessor] 找到书签占位符: ${p}`);
+    });
+
+    // 5. Word域代码格式 (MERGEFIELD)
     const mergeFieldPattern = /MERGEFIELD\s+([^\s\\]+)/gi;
     while ((match = mergeFieldPattern.exec(xmlContent)) !== null) {
       const fieldName = match[1].trim();
@@ -768,14 +782,21 @@ export class WordProcessor {
       console.log(`[WordProcessor] 找到MERGEFIELD占位符: ${fieldName}`);
     }
 
-    // 4. 处理被XML节点分割的占位符
+    // 6. 表格中的占位符
+    const tablePlaceholders = this.extractTablePlaceholders(xmlContent);
+    tablePlaceholders.forEach(p => {
+      placeholders.add(p);
+      console.log(`[WordProcessor] 找到表格占位符: ${p}`);
+    });
+
+    // 7. 处理被XML节点分割的占位符
     const reassembledPlaceholders = this.reassembleFragmentedPlaceholders(xmlContent);
     reassembledPlaceholders.forEach(p => {
       placeholders.add(p);
       console.log(`[WordProcessor] 找到重组占位符: ${p}`);
     });
 
-    // 5. 智能字段名推断（基于已知字段模式）
+    // 8. 智能字段名推断（基于已知字段模式）
     const inferredPlaceholders = this.inferPlaceholdersFromContent(xmlContent);
     inferredPlaceholders.forEach(p => {
       placeholders.add(p);
@@ -783,7 +804,7 @@ export class WordProcessor {
     });
 
     const result = Array.from(placeholders).sort();
-    console.log(`[WordProcessor] 占位符识别完成，共找到 ${result.length} 个:`, result);
+    console.log(`[WordProcessor] 专业级占位符识别完成，共找到 ${result.length} 个:`, result);
 
     return result;
   }
@@ -903,6 +924,171 @@ export class WordProcessor {
   }
 
   /**
+   * 提取Word内容控件中的占位符
+   */
+  private static extractContentControlPlaceholders(xmlContent: string): string[] {
+    const placeholders: string[] = [];
+
+    // 查找所有内容控件 <w:sdt>
+    const sdtPattern = /<w:sdt[^>]*>.*?<\/w:sdt>/g;
+    let match;
+
+    while ((match = sdtPattern.exec(xmlContent)) !== null) {
+      const sdtContent = match[0];
+
+      // 提取标签属性 (w:tag)
+      const tagMatch = sdtContent.match(/<w:tag w:val="([^"]*)"/);
+      if (tagMatch) {
+        const tagValue = tagMatch[1].trim();
+        if (tagValue && tagValue.length > 0) {
+          placeholders.push(tagValue);
+        }
+      }
+
+      // 提取别名属性 (w:alias)
+      const aliasMatch = sdtContent.match(/<w:alias w:val="([^"]*)"/);
+      if (aliasMatch) {
+        const aliasValue = aliasMatch[1].trim();
+        if (aliasValue && aliasValue.length > 0) {
+          placeholders.push(aliasValue);
+        }
+      }
+
+      // 提取占位符文本
+      const placeholderMatch = sdtContent.match(/<w:placeholder>.*?<w:docPart w:val="([^"]*)"/);
+      if (placeholderMatch) {
+        const placeholderValue = placeholderMatch[1].trim();
+        if (placeholderValue && placeholderValue.length > 0) {
+          placeholders.push(placeholderValue);
+        }
+      }
+
+      // 提取内容控件内的文本，查找可能的占位符
+      const textMatches = sdtContent.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+      if (textMatches) {
+        const allText = textMatches.map(t => t.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1')).join('');
+
+        // 在文本中查找占位符模式
+        const textPlaceholders = this.extractPlaceholdersFromText(allText);
+        placeholders.push(...textPlaceholders);
+      }
+    }
+
+    return Array.from(new Set(placeholders));
+  }
+
+  /**
+   * 提取Word书签中的占位符
+   */
+  private static extractBookmarkPlaceholders(xmlContent: string): string[] {
+    const placeholders: string[] = [];
+
+    // 查找书签开始标记
+    const bookmarkPattern = /<w:bookmarkStart[^>]*w:name="([^"]*)"[^>]*>/g;
+    let match;
+
+    while ((match = bookmarkPattern.exec(xmlContent)) !== null) {
+      const bookmarkName = match[1].trim();
+
+      // 书签名称本身可能就是字段名
+      if (bookmarkName && bookmarkName.length > 0) {
+        placeholders.push(bookmarkName);
+
+        // 查找书签内容
+        const bookmarkContentPattern = new RegExp(
+          `<w:bookmarkStart[^>]*w:name="${bookmarkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>.*?<w:bookmarkEnd[^>]*>`,
+          's'
+        );
+
+        const contentMatch = xmlContent.match(bookmarkContentPattern);
+        if (contentMatch) {
+          const bookmarkContent = contentMatch[0];
+
+          // 提取书签内的文本
+          const textMatches = bookmarkContent.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+          if (textMatches) {
+            const allText = textMatches.map(t => t.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1')).join('');
+            const textPlaceholders = this.extractPlaceholdersFromText(allText);
+            placeholders.push(...textPlaceholders);
+          }
+        }
+      }
+    }
+
+    return Array.from(new Set(placeholders));
+  }
+
+  /**
+   * 提取表格中的占位符
+   */
+  private static extractTablePlaceholders(xmlContent: string): string[] {
+    const placeholders: string[] = [];
+
+    // 查找所有表格
+    const tablePattern = /<w:tbl[^>]*>.*?<\/w:tbl>/g;
+    let match;
+
+    while ((match = tablePattern.exec(xmlContent)) !== null) {
+      const tableContent = match[0];
+
+      // 提取表格中的所有文本
+      const textMatches = tableContent.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+      if (textMatches) {
+        const allText = textMatches.map(t => t.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1')).join(' ');
+
+        // 在表格文本中查找占位符
+        const textPlaceholders = this.extractPlaceholdersFromText(allText);
+        placeholders.push(...textPlaceholders);
+
+        // 特别查找已知字段名
+        const knownFields = [
+          "甲方公司名称", "乙方公司名称", "合同类型", "合同金额", "签署日期",
+          "甲方联系人", "甲方电话", "乙方联系人", "联系邮箱", "付款方式",
+          "产品清单", "是否包含保险", "特别约定"
+        ];
+
+        knownFields.forEach(field => {
+          if (allText.includes(field)) {
+            placeholders.push(field);
+          }
+        });
+      }
+    }
+
+    return Array.from(new Set(placeholders));
+  }
+
+  /**
+   * 从文本中提取占位符
+   */
+  private static extractPlaceholdersFromText(text: string): string[] {
+    const placeholders: string[] = [];
+
+    // 各种占位符格式
+    const patterns = [
+      /\{\{([^}]+)\}\}/g,      // 双花括号
+      /\{([^{}]+)\}/g,         // 单花括号
+      /\[([^\]]+)\]/g,         // 方括号
+      /_{3,}/g,                // 下划线
+      /\.{3,}/g,               // 点线
+    ];
+
+    patterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        if (match[1]) {
+          const placeholder = match[1].trim();
+          if (placeholder && placeholder.length > 0 && placeholder.length < 50) {
+            placeholders.push(placeholder);
+          }
+        }
+      }
+    });
+
+    return placeholders;
+  }
+
+  /**
    * 原生XML替换方法（备用方案）
    */
   static async generateDocumentWithNativeXML(
@@ -1001,41 +1187,74 @@ export class WordProcessor {
   }
 
   /**
-   * 智能字段替换（处理特殊格式和分割情况）
+   * 智能字段替换（处理特殊格式和分割情况）- 专业版
    */
   private static smartReplaceField(xmlContent: string, fieldName: string, value: string): { xml: string; replaced: boolean } {
     let xml = xmlContent;
     let replaced = false;
 
-    // 1. 尝试替换跨节点分割的占位符
-    const crossNodePatterns = [
-      // 匹配 <w:t>{{字段</w:t>...<w:t>名}}</w:t> 这样的分割
-      new RegExp(`<w:t[^>]*>\\{\\{[^<]*${fieldName.substring(0, Math.min(3, fieldName.length))}[^<]*</w:t>.*?<w:t[^>]*>[^<]*${fieldName.substring(-3)}[^<]*\\}\\}</w:t>`, 'g'),
-      // 匹配包含字段名关键词的模式
-      new RegExp(`<w:t[^>]*>[^<]*${fieldName}[^<]*</w:t>`, 'g'),
-    ];
+    console.log(`[WordProcessor] 开始智能替换字段: ${fieldName} -> ${value}`);
 
-    for (const pattern of crossNodePatterns) {
-      const matches = xml.match(pattern);
-      if (matches) {
-        matches.forEach(match => {
-          // 简单替换：将整个匹配替换为值
-          xml = xml.replace(match, `<w:t>${value}</w:t>`);
-          replaced = true;
-        });
+    // 1. 尝试替换内容控件
+    const contentControlResult = this.replaceInContentControls(xml, fieldName, value);
+    if (contentControlResult.replaced) {
+      xml = contentControlResult.xml;
+      replaced = true;
+      console.log(`[WordProcessor] 通过内容控件替换成功: ${fieldName}`);
+    }
+
+    // 2. 尝试替换书签
+    if (!replaced) {
+      const bookmarkResult = this.replaceInBookmarks(xml, fieldName, value);
+      if (bookmarkResult.replaced) {
+        xml = bookmarkResult.xml;
+        replaced = true;
+        console.log(`[WordProcessor] 通过书签替换成功: ${fieldName}`);
       }
     }
 
-    // 2. 尝试替换Word域代码
-    const fieldCodePattern = new RegExp(`MERGEFIELD\\s+${fieldName}\\s*`, 'gi');
-    if (fieldCodePattern.test(xml)) {
-      // 这里需要更复杂的Word域代码处理逻辑
-      // 暂时简单替换
-      xml = xml.replace(fieldCodePattern, value);
-      replaced = true;
+    // 3. 尝试替换表格中的字段
+    if (!replaced) {
+      const tableResult = this.replaceInTables(xml, fieldName, value);
+      if (tableResult.replaced) {
+        xml = tableResult.xml;
+        replaced = true;
+        console.log(`[WordProcessor] 通过表格替换成功: ${fieldName}`);
+      }
     }
 
-    // 3. 尝试模糊匹配和替换
+    // 4. 尝试替换跨节点分割的占位符
+    if (!replaced) {
+      const crossNodePatterns = [
+        // 匹配 <w:t>{{字段</w:t>...<w:t>名}}</w:t> 这样的分割
+        new RegExp(`<w:t[^>]*>\\{\\{[^<]*${fieldName.substring(0, Math.min(3, fieldName.length))}[^<]*</w:t>.*?<w:t[^>]*>[^<]*${fieldName.substring(-3)}[^<]*\\}\\}</w:t>`, 'g'),
+        // 匹配包含字段名关键词的模式
+        new RegExp(`<w:t[^>]*>[^<]*${fieldName}[^<]*</w:t>`, 'g'),
+      ];
+
+      for (const pattern of crossNodePatterns) {
+        const matches = xml.match(pattern);
+        if (matches) {
+          matches.forEach(match => {
+            // 简单替换：将整个匹配替换为值
+            xml = xml.replace(match, `<w:t>${value}</w:t>`);
+            replaced = true;
+          });
+        }
+      }
+    }
+
+    // 5. 尝试替换Word域代码
+    if (!replaced) {
+      const fieldCodePattern = new RegExp(`MERGEFIELD\\s+${fieldName}\\s*`, 'gi');
+      if (fieldCodePattern.test(xml)) {
+        xml = xml.replace(fieldCodePattern, value);
+        replaced = true;
+        console.log(`[WordProcessor] 通过域代码替换成功: ${fieldName}`);
+      }
+    }
+
+    // 6. 尝试模糊匹配和替换
     if (!replaced) {
       // 查找包含字段名的文本节点
       const textNodePattern = new RegExp(`<w:t[^>]*>([^<]*${fieldName}[^<]*)</w:t>`, 'g');
@@ -1049,8 +1268,166 @@ export class WordProcessor {
               textContent.includes(fieldName) && textContent.length < fieldName.length + 10) {
             xml = xml.replace(match, `<w:t>${value}</w:t>`);
             replaced = true;
+            console.log(`[WordProcessor] 通过模糊匹配替换成功: ${fieldName}`);
           }
         });
+      }
+    }
+
+    if (!replaced) {
+      console.log(`[WordProcessor] 智能替换失败: ${fieldName}`);
+    }
+
+    return { xml, replaced };
+  }
+
+  /**
+   * 在内容控件中替换字段
+   */
+  private static replaceInContentControls(xmlContent: string, fieldName: string, value: string): { xml: string; replaced: boolean } {
+    let xml = xmlContent;
+    let replaced = false;
+
+    // 查找匹配的内容控件
+    const sdtPattern = /<w:sdt[^>]*>.*?<\/w:sdt>/g;
+    let match;
+
+    while ((match = sdtPattern.exec(xmlContent)) !== null) {
+      const sdtContent = match[0];
+      let shouldReplace = false;
+
+      // 检查标签属性
+      const tagMatch = sdtContent.match(/<w:tag w:val="([^"]*)"/);
+      if (tagMatch && tagMatch[1].trim() === fieldName) {
+        shouldReplace = true;
+      }
+
+      // 检查别名属性
+      const aliasMatch = sdtContent.match(/<w:alias w:val="([^"]*)"/);
+      if (aliasMatch && aliasMatch[1].trim() === fieldName) {
+        shouldReplace = true;
+      }
+
+      // 检查内容是否包含字段名
+      if (sdtContent.includes(fieldName)) {
+        shouldReplace = true;
+      }
+
+      if (shouldReplace) {
+        // 替换内容控件的内容
+        const newSdtContent = sdtContent.replace(
+          /<w:t[^>]*>([^<]*)<\/w:t>/g,
+          `<w:t>${value}</w:t>`
+        );
+        xml = xml.replace(sdtContent, newSdtContent);
+        replaced = true;
+      }
+    }
+
+    return { xml, replaced };
+  }
+
+  /**
+   * 在书签中替换字段
+   */
+  private static replaceInBookmarks(xmlContent: string, fieldName: string, value: string): { xml: string; replaced: boolean } {
+    let xml = xmlContent;
+    let replaced = false;
+
+    // 查找匹配的书签
+    const bookmarkPattern = /<w:bookmarkStart[^>]*w:name="([^"]*)"[^>]*>/g;
+    let match;
+
+    while ((match = bookmarkPattern.exec(xmlContent)) !== null) {
+      const bookmarkName = match[1].trim();
+
+      if (bookmarkName === fieldName || bookmarkName.includes(fieldName)) {
+        // 查找书签内容并替换
+        const bookmarkContentPattern = new RegExp(
+          `<w:bookmarkStart[^>]*w:name="${bookmarkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>.*?<w:bookmarkEnd[^>]*>`,
+          's'
+        );
+
+        const contentMatch = xml.match(bookmarkContentPattern);
+        if (contentMatch) {
+          const bookmarkContent = contentMatch[0];
+          const newBookmarkContent = bookmarkContent.replace(
+            /<w:t[^>]*>([^<]*)<\/w:t>/g,
+            `<w:t>${value}</w:t>`
+          );
+          xml = xml.replace(bookmarkContent, newBookmarkContent);
+          replaced = true;
+        }
+      }
+    }
+
+    return { xml, replaced };
+  }
+
+  /**
+   * 在表格中替换字段
+   */
+  private static replaceInTables(xmlContent: string, fieldName: string, value: string): { xml: string; replaced: boolean } {
+    let xml = xmlContent;
+    let replaced = false;
+
+    // 查找所有表格
+    const tablePattern = /<w:tbl[^>]*>.*?<\/w:tbl>/g;
+    let match;
+
+    while ((match = tablePattern.exec(xmlContent)) !== null) {
+      const tableContent = match[0];
+
+      // 检查表格是否包含字段名
+      if (tableContent.includes(fieldName)) {
+        // 在表格中查找并替换
+        let newTableContent = tableContent;
+
+        // 替换各种格式的占位符
+        const patterns = [
+          new RegExp(`\\{\\{\\s*${fieldName}\\s*\\}\\}`, 'g'),
+          new RegExp(`\\{\\s*${fieldName}\\s*\\}`, 'g'),
+          new RegExp(`\\[\\s*${fieldName}\\s*\\]`, 'g'),
+        ];
+
+        patterns.forEach(pattern => {
+          if (pattern.test(newTableContent)) {
+            newTableContent = newTableContent.replace(pattern, value);
+            replaced = true;
+          }
+        });
+
+        // 如果找到了字段名但没有标准格式，尝试直接替换
+        if (!replaced && newTableContent.includes(fieldName)) {
+          // 查找包含字段名的单元格
+          const cellPattern = /<w:tc[^>]*>.*?<\/w:tc>/g;
+          let cellMatch;
+
+          while ((cellMatch = cellPattern.exec(tableContent)) !== null) {
+            const cellContent = cellMatch[0];
+
+            if (cellContent.includes(fieldName)) {
+              // 检查是否是纯字段名的单元格
+              const textMatches = cellContent.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+              if (textMatches) {
+                const allText = textMatches.map(t => t.replace(/<w:t[^>]*>([^<]*)<\/w:t>/, '$1')).join('').trim();
+
+                if (allText === fieldName || (allText.includes(fieldName) && allText.length < fieldName.length + 10)) {
+                  const newCellContent = cellContent.replace(
+                    /<w:t[^>]*>([^<]*)<\/w:t>/g,
+                    `<w:t>${value}</w:t>`
+                  );
+                  newTableContent = newTableContent.replace(cellContent, newCellContent);
+                  replaced = true;
+                }
+              }
+            }
+          }
+        }
+
+        if (replaced) {
+          xml = xml.replace(tableContent, newTableContent);
+        }
       }
     }
 
