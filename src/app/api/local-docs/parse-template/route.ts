@@ -53,12 +53,19 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Local Docs] 模板解析失败:', error);
-    
+
+    // 确保错误信息不包含敏感的XML内容
+    let errorMessage = '模板解析失败';
+    if (error instanceof Error) {
+      // 过滤掉可能包含XML内容的错误信息
+      const message = error.message;
+      if (message && !message.includes('<') && !message.includes('>') && message.length < 200) {
+        errorMessage = `模板解析失败: ${message}`;
+      }
+    }
+
     return NextResponse.json(
-      createErrorResponse(
-        'PARSE_ERROR',
-        `模板解析失败: ${error instanceof Error ? error.message : '未知错误'}`
-      ),
+      createErrorResponse('PARSE_ERROR', errorMessage),
       { status: 500 }
     );
   }

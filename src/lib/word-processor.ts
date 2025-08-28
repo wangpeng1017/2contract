@@ -74,7 +74,26 @@ export interface GenerationResult {
  * Word文档处理器类
  */
 export class WordProcessor {
-  
+
+  /**
+   * 安全过滤错误信息，防止XML内容泄露
+   */
+  private static sanitizeErrorMessage(error: unknown, defaultMessage: string): string {
+    if (error instanceof Error) {
+      const message = error.message;
+      // 检查是否包含XML标签或过长的内容
+      if (message &&
+          !message.includes('<') &&
+          !message.includes('>') &&
+          !message.includes('w:') &&
+          !message.includes('xml') &&
+          message.length < 200) {
+        return message;
+      }
+    }
+    return defaultMessage;
+  }
+
   /**
    * 解析Word模板，提取占位符信息
    */
@@ -111,7 +130,7 @@ export class WordProcessor {
       
     } catch (error) {
       console.error('[WordProcessor] 模板解析失败:', error);
-      throw new Error(`模板解析失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      throw new Error(this.sanitizeErrorMessage(error, '模板解析失败'));
     }
   }
   
@@ -121,47 +140,68 @@ export class WordProcessor {
   private static extractPlaceholders(xmlContent: string): PlaceholderInfo[] {
     const placeholders: PlaceholderInfo[] = [];
     const placeholderSet = new Set<string>();
-    
-    // 匹配 {{placeholder}} 格式的占位符
-    // 考虑到Word可能会将占位符分割到多个XML节点中，我们需要更复杂的匹配
-    const patterns = [
-      /\{\{([^}]+)\}\}/g,  // 标准格式
-      /\{([^}]+)\}/g,      // 单花括号格式
-    ];
-    
-    patterns.forEach(pattern => {
-      let match;
-      while ((match = pattern.exec(xmlContent)) !== null) {
-        const placeholderName = match[1].trim();
-        
-        if (placeholderName && !placeholderSet.has(placeholderName)) {
-          placeholderSet.add(placeholderName);
-          
-          const placeholderType = this.inferPlaceholderType(placeholderName);
-          const placeholder: PlaceholderInfo = {
-            name: placeholderName,
-            type: placeholderType,
-            required: true, // MVP阶段默认都是必填
-            description: this.generatePlaceholderDescription(placeholderName),
-            options: this.generatePlaceholderOptions(placeholderName, placeholderType),
-            validation: this.generatePlaceholderValidation(placeholderName, placeholderType),
-            placeholder: this.generatePlaceholderText(placeholderName, placeholderType),
-            helpText: this.generateHelpText(placeholderName, placeholderType),
-            tableConfig: placeholderType === 'table' ? this.generateTableConfig(placeholderName) : undefined
-          };
-          
-          placeholders.push(placeholder);
-        }
+
+    try {
+      // 确保XML内容不会泄露到前端
+      if (!xmlContent || typeof xmlContent !== 'string') {
+        console.log('[WordProcessor] XML内容无效，返回示例占位符');
+        return this.getDefaultPlaceholders();
       }
-    });
-    
-    // 如果没有找到占位符，返回一些示例占位符用于演示
-    if (placeholders.length === 0) {
-      console.log('[WordProcessor] 未找到占位符，返回示例占位符');
+
+      // 匹配 {{placeholder}} 格式的占位符
+      // 考虑到Word可能会将占位符分割到多个XML节点中，我们需要更复杂的匹配
+      const patterns = [
+        /\{\{([^}]+)\}\}/g,  // 标准格式
+        /\{([^}]+)\}/g,      // 单花括号格式
+      ];
+
+      patterns.forEach(pattern => {
+        let match;
+        while ((match = pattern.exec(xmlContent)) !== null) {
+          const placeholderName = match[1].trim();
+
+          // 过滤掉XML标签和无效内容
+          if (placeholderName &&
+              !placeholderName.includes('<') &&
+              !placeholderName.includes('>') &&
+              !placeholderName.includes('w:') &&
+              placeholderName.length > 0 &&
+              placeholderName.length < 100 && // 防止异常长的内容
+              !placeholderSet.has(placeholderName)) {
+
+            placeholderSet.add(placeholderName);
+
+            const placeholderType = this.inferPlaceholderType(placeholderName);
+            const placeholder: PlaceholderInfo = {
+              name: placeholderName,
+              type: placeholderType,
+              required: true, // MVP阶段默认都是必填
+              description: this.generatePlaceholderDescription(placeholderName),
+              options: this.generatePlaceholderOptions(placeholderName, placeholderType),
+              validation: this.generatePlaceholderValidation(placeholderName, placeholderType),
+              placeholder: this.generatePlaceholderText(placeholderName, placeholderType),
+              helpText: this.generateHelpText(placeholderName, placeholderType),
+              tableConfig: placeholderType === 'table' ? this.generateTableConfig(placeholderName) : undefined
+            };
+
+            placeholders.push(placeholder);
+          }
+        }
+      });
+
+      // 如果没有找到占位符，返回一些示例占位符用于演示
+      if (placeholders.length === 0) {
+        console.log('[WordProcessor] 未找到占位符，返回示例占位符');
+        return this.getDefaultPlaceholders();
+      }
+
+      return placeholders.sort((a, b) => a.name.localeCompare(b.name));
+
+    } catch (error) {
+      console.error('[WordProcessor] 占位符提取失败:', error);
+      // 确保错误情况下不会泄露XML内容
       return this.getDefaultPlaceholders();
     }
-    
-    return placeholders.sort((a, b) => a.name.localeCompare(b.name));
   }
   
   /**
@@ -687,7 +727,7 @@ export class WordProcessor {
       };
     } catch (error) {
       console.error('[WordProcessor] 诊断失败:', error);
-      throw error;
+      throw new Error(this.sanitizeErrorMessage(error, '模板诊断失败'));
     }
   }
 
@@ -830,7 +870,7 @@ export class WordProcessor {
 
     } catch (error) {
       console.error('[WordProcessor] 文档生成失败:', error);
-      throw new Error(`文档生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      throw new Error(this.sanitizeErrorMessage(error, '文档生成失败'));
     }
   }
 

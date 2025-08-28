@@ -47,6 +47,25 @@ function LocalDocsContent() {
   const searchParams = useSearchParams();
   const templateId = searchParams.get('template');
 
+  // 安全过滤错误信息，防止XML内容显示
+  const sanitizeErrorMessage = (error: unknown): string => {
+    if (typeof error === 'string') {
+      // 检查是否包含XML标签
+      if (error.includes('<') && error.includes('>')) {
+        return '模板处理失败，请检查文件格式';
+      }
+      // 检查是否过长
+      if (error.length > 200) {
+        return '处理失败，请重试';
+      }
+      return error;
+    }
+    if (error instanceof Error) {
+      return sanitizeErrorMessage(error.message);
+    }
+    return '未知错误';
+  };
+
   const [currentStep, setCurrentStep] = useState(1);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [placeholders, setPlaceholders] = useState<Placeholder[]>([]);
@@ -185,7 +204,7 @@ function LocalDocsContent() {
       }, 2000);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载模板失败');
+      setError(sanitizeErrorMessage(err));
       setProcessingStatus('');
     } finally {
       setIsProcessing(false);
@@ -237,7 +256,7 @@ function LocalDocsContent() {
         throw new Error(result.message || '模板解析失败');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '模板解析失败');
+      setError(sanitizeErrorMessage(err));
       setProcessingStatus('');
     } finally {
       setIsProcessing(false);
@@ -315,7 +334,7 @@ function LocalDocsContent() {
         setProcessingStatus('');
       }, 1000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : (exportFormat === 'pdf' ? 'PDF生成失败' : '文档生成失败'));
+      setError(sanitizeErrorMessage(err));
       setProcessingStatus('');
     } finally {
       setIsProcessing(false);
@@ -389,7 +408,9 @@ function LocalDocsContent() {
         <div className="card p-4 mb-6 bg-red-50 border border-red-200">
           <div className="flex items-center">
             <AlertCircle size={20} className="text-red-600 mr-2" />
-            <span className="text-red-700">{error}</span>
+            <span className="text-red-700">
+              {sanitizeErrorMessage(error)}
+            </span>
           </div>
         </div>
       )}
