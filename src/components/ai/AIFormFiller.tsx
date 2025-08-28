@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Loader2, CheckCircle, AlertCircle, Sparkles, MessageSquare } from 'lucide-react';
+import { Bot, Send, Loader2, CheckCircle, AlertCircle, Sparkles, MessageSquare, Mic } from 'lucide-react';
 import { PlaceholderInfo } from '@/lib/word-processor';
+import VoiceInput from './VoiceInput';
 
 interface AIFormFillerProps {
   placeholders: PlaceholderInfo[];
@@ -39,7 +40,8 @@ export function AIFormFiller({
   const [lastMappings, setLastMappings] = useState<FieldMapping[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  
+  const [showVoiceInput, setShowVoiceInput] = useState(false);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -186,6 +188,19 @@ export function AIFormFiller({
     }
   };
 
+  const handleVoiceResult = (text: string) => {
+    setUserInput(text);
+    setShowVoiceInput(false);
+    // 自动聚焦到文本框，让用户可以继续编辑
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const toggleVoiceInput = () => {
+    setShowVoiceInput(!showVoiceInput);
+  };
+
   const applySuggestion = (suggestion: string) => {
     setUserInput(suggestion);
     setShowSuggestions(false);
@@ -311,25 +326,57 @@ export function AIFormFiller({
       )}
 
       {/* 输入区域 */}
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-gray-200 p-4 space-y-3">
+        {/* 语音输入区域 */}
+        {showVoiceInput && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <VoiceInput
+              onResult={handleVoiceResult}
+              placeholder="点击麦克风开始语音输入..."
+              disabled={aiStatus !== 'available' || isProcessing}
+              className="w-full"
+            />
+          </div>
+        )}
+
+        {/* 文本输入区域 */}
         <div className="flex space-x-2">
-          <textarea
-            ref={inputRef}
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={aiStatus === 'available' 
-              ? "描述您要填写的内容..." 
-              : "AI服务暂不可用"
-            }
+          <div className="flex-1 relative">
+            <textarea
+              ref={inputRef}
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={aiStatus === 'available'
+                ? "描述您要填写的内容..."
+                : "AI服务暂不可用"
+              }
+              disabled={aiStatus !== 'available' || isProcessing}
+              className="w-full resize-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
+              rows={2}
+            />
+          </div>
+
+          {/* 语音输入切换按钮 */}
+          <button
+            onClick={toggleVoiceInput}
             disabled={aiStatus !== 'available' || isProcessing}
-            className="flex-1 resize-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
-            rows={2}
-          />
+            className={`p-2 rounded-lg transition-colors ${
+              showVoiceInput
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            } disabled:bg-gray-100 disabled:text-gray-400`}
+            title={showVoiceInput ? '关闭语音输入' : '开启语音输入'}
+          >
+            <Mic size={16} />
+          </button>
+
+          {/* 发送按钮 */}
           <button
             onClick={handleAIFill}
             disabled={!userInput.trim() || aiStatus !== 'available' || isProcessing}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white p-2 rounded-lg transition-colors"
+            title="发送消息"
           >
             {isProcessing ? (
               <Loader2 size={16} className="animate-spin" />
@@ -338,8 +385,11 @@ export function AIFormFiller({
             )}
           </button>
         </div>
-        <div className="text-xs text-gray-500 mt-1">
-          按 Enter 发送，Shift+Enter 换行
+
+        {/* 使用提示 */}
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>按 Enter 发送，Shift+Enter 换行</span>
+          <span>💡 点击麦克风图标可使用语音输入</span>
         </div>
       </div>
     </div>
