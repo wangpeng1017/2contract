@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { AdvancedFormField } from '@/components/form/AdvancedFormField';
 import { TableData } from '@/components/form/TableEditor';
 import { AIFormFiller } from '@/components/ai/AIFormFiller';
+import DocumentPreview from '@/components/DocumentPreview';
 
 interface Placeholder {
   name: string;
@@ -77,6 +78,10 @@ function LocalDocsContent() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [exportFormat, setExportFormat] = useState<'docx' | 'pdf'>('docx');
   const [showAIFiller, setShowAIFiller] = useState(false);
+
+  // 文档预览相关状态
+  const [showPreview, setShowPreview] = useState(false);
+  const [generatedDocBuffer, setGeneratedDocBuffer] = useState<ArrayBuffer | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -320,17 +325,27 @@ function LocalDocsContent() {
         throw new Error(errorMessage);
       }
 
-      setProcessingStatus('正在准备下载...');
+      setProcessingStatus('正在准备预览...');
 
       // 处理文件下载
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       setGeneratedDocUrl(url);
 
+      // 保存文档buffer用于预览分析
+      const arrayBuffer = await blob.arrayBuffer();
+      setGeneratedDocBuffer(arrayBuffer);
+
       const successMessage = isGeneratingPDF ? 'PDF文档生成成功！' : '文档生成成功！';
       setProcessingStatus(successMessage);
+
+      // 对于Word文档，显示预览；对于PDF，直接跳转到下载页面
       setTimeout(() => {
-        setCurrentStep(3);
+        if (isGeneratingPDF) {
+          setCurrentStep(3);
+        } else {
+          setShowPreview(true);
+        }
         setProcessingStatus('');
       }, 1000);
     } catch (err) {
@@ -352,6 +367,26 @@ function LocalDocsContent() {
     }
   };
 
+  const handlePreviewDownload = () => {
+    setShowPreview(false);
+    setCurrentStep(3);
+    handleDownload();
+  };
+
+  const handlePreviewRegenerate = () => {
+    setShowPreview(false);
+    // 重新生成文档
+    const form = document.querySelector('form');
+    if (form) {
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+  };
+
+  const handlePreviewClose = () => {
+    setShowPreview(false);
+    setCurrentStep(3);
+  };
+
   const resetProcess = () => {
     setCurrentStep(1);
     setUploadedFile(null);
@@ -359,6 +394,8 @@ function LocalDocsContent() {
     setFormData({});
     setError(null);
     setGeneratedDocUrl(null);
+    setGeneratedDocBuffer(null);
+    setShowPreview(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -769,6 +806,16 @@ function LocalDocsContent() {
           onToggle={() => setShowAIFiller(!showAIFiller)}
         />
       )}
+
+      {/* 文档预览组件 */}
+      <DocumentPreview
+        documentBuffer={generatedDocBuffer}
+        originalData={formData}
+        onDownload={handlePreviewDownload}
+        onRegenerate={handlePreviewRegenerate}
+        isVisible={showPreview}
+        onClose={handlePreviewClose}
+      />
     </div>
   );
 }
