@@ -802,6 +802,90 @@ export class WordProcessor {
   }
 
   /**
+   * 原生XML替换方法（备用方案）
+   */
+  static async generateDocumentWithNativeXML(
+    templateBuffer: ArrayBuffer,
+    data: Record<string, any>,
+    templateName: string
+  ): Promise<GenerationResult> {
+    console.log('[WordProcessor] 使用原生XML替换方法');
+
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      const zipContent = await zip.loadAsync(templateBuffer);
+
+      // 获取document.xml文件
+      const documentXmlFile = zipContent.file('word/document.xml');
+      if (!documentXmlFile) {
+        throw new Error('无法找到document.xml文件，可能不是有效的Word文档');
+      }
+
+      let documentXml = await documentXmlFile.async('text');
+      console.log('[WordProcessor] 原始XML长度:', documentXml.length);
+
+      // 手动替换占位符
+      let replacedCount = 0;
+      for (const [key, value] of Object.entries(data)) {
+        const placeholder = `{{${key}}}`;
+        const stringValue = String(value || '');
+
+        if (documentXml.includes(placeholder)) {
+          // 使用全局替换
+          const regex = new RegExp(this.escapeRegExp(placeholder), 'g');
+          const beforeLength = documentXml.length;
+          documentXml = documentXml.replace(regex, stringValue);
+          const afterLength = documentXml.length;
+
+          if (beforeLength !== afterLength) {
+            replacedCount++;
+            console.log(`[WordProcessor] 替换 ${placeholder} -> ${stringValue}`);
+          }
+        }
+      }
+
+      console.log(`[WordProcessor] 原生XML替换完成，替换了 ${replacedCount} 个占位符`);
+
+      // 更新ZIP文件中的document.xml
+      zip.file('word/document.xml', documentXml);
+
+      // 生成新的文档
+      const newDocumentBuffer = await zip.generateAsync({
+        type: 'arraybuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+
+      return {
+        documentBuffer: newDocumentBuffer,
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          templateName: templateName,
+          filledFields: Object.keys(data),
+          fileSize: newDocumentBuffer.byteLength,
+          diagnosis: {
+            totalPlaceholders: Object.keys(data).length,
+            matchedPlaceholders: replacedCount,
+            unmatchedPlaceholders: Object.keys(data).length - replacedCount
+          }
+        }
+      };
+
+    } catch (error) {
+      console.error('[WordProcessor] 原生XML替换失败:', error);
+      throw new Error(`原生XML替换失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }
+
+  /**
+   * 转义正则表达式特殊字符
+   */
+  private static escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
    * 生成填充数据后的Word文档
    */
   static async generateDocument(
@@ -814,6 +898,13 @@ export class WordProcessor {
       console.log(`[WordProcessor] 填充数据字段:`, Object.keys(data));
       console.log(`[WordProcessor] 填充数据详情:`, JSON.stringify(data, null, 2));
 
+      // 环境检测
+      const isProduction = process.env.NODE_ENV === 'production';
+      const isLinux = process.platform === 'linux';
+      const nodeVersion = process.version;
+
+      console.log(`[WordProcessor] 环境信息: NODE_ENV=${process.env.NODE_ENV}, platform=${process.platform}, nodeVersion=${nodeVersion}`);
+
       // 先进行诊断
       const diagnosis = await this.diagnoseTemplatePlaceholders(templateBuffer, data, templateName);
 
@@ -821,6 +912,17 @@ export class WordProcessor {
       const fixedData = this.fixDataKeyMapping(data, diagnosis);
 
       console.log(`[WordProcessor] 修复后的数据键名:`, Object.keys(fixedData));
+
+      // 生产环境Linux系统使用原生XML替换作为主要方案
+      if (isProduction && isLinux) {
+        console.log(`[WordProcessor] 检测到生产环境Linux系统，使用原生XML替换方案`);
+        try {
+          return await this.generateDocumentWithNativeXML(templateBuffer, fixedData, templateName);
+        } catch (nativeError) {
+          console.error(`[WordProcessor] 原生XML替换失败，回退到docx-templates:`, nativeError);
+          // 继续使用docx-templates作为备用方案
+        }
+      }
 
       // 使用docx-templates生成文档
       const documentBuffer = await createReport({
