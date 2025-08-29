@@ -426,13 +426,13 @@ function LocalDocsContent() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* 页面头部 */}
-      <div className="flex items-center mb-8">
+      {/* 页面头部 - 压缩高度 */}
+      <div className="flex items-center mb-4">
         <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 mr-4">
-          <ArrowLeft size={20} className="mr-2" />
+          <ArrowLeft size={18} className="mr-2" />
           返回首页
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900">
+        <h1 className="text-2xl font-bold text-gray-900">
           本地文档处理
         </h1>
       </div>

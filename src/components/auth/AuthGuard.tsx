@@ -37,11 +37,11 @@ export function AuthGuard({ children, fallback }: AuthGuardProps) {
             </div>
             
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              需要登录
+              需要飞书登录
             </h2>
-            
+
             <p className="text-gray-600 mb-6">
-              请使用飞书账号登录以访问合同内容更新助手
+              飞书文档处理功能需要登录飞书账号以访问您的云端文档
             </p>
             
             {error && (
