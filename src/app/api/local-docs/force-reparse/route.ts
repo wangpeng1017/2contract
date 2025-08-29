@@ -231,7 +231,7 @@ function findFragmentedPlaceholders(xmlContent: string): string[] {
     }
   }
   
-  return [...new Set(fragmented)]; // 去重
+  return Array.from(new Set(fragmented)); // 去重
 }
 
 /**

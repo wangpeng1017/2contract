@@ -95,7 +95,7 @@ if (templateRelatedKeys.length > 0) {
   console.log('🎯 发现模板相关缓存:', templateRelatedKeys);
   templateRelatedKeys.forEach(key => {
     const value = localStorage.getItem(key);
-    console.log(\`  - \${key}: \${value ? value.substring(0, 100) + '...' : 'null'}\`);
+    console.log(\`  - \${key}: \${value ? value.substring(0, 100) + &quot;...&quot; : &quot;null&quot;}\`);
   });
 } else {
   console.log('✅ localStorage中无模板相关缓存');
@@ -139,7 +139,7 @@ console.log('   sessionTemplateKeys.forEach(key => sessionStorage.removeItem(key
 console.log('3. 按 Ctrl+Shift+Delete 清理浏览器缓存');
 console.log('4. 重命名Word文件后重新上传');
 
-console.log('\\n🎉 诊断完成！');
+console.log(&quot;\\n🎉 诊断完成！&quot;);
 `;
 
     const blob = new Blob([script], { type: 'text/javascript' });
@@ -395,11 +395,11 @@ console.log('\\n🎉 诊断完成！');
           <div className="space-y-3 text-sm text-gray-600">
             <div className="flex items-start">
               <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold mr-3 mt-0.5">1</span>
-              <p>首先尝试"清除浏览器缓存"，这能解决大部分缓存问题</p>
+              <p>首先尝试&quot;清除浏览器缓存&quot;，这能解决大部分缓存问题</p>
             </div>
             <div className="flex items-start">
               <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold mr-3 mt-0.5">2</span>
-              <p>如果问题持续，使用"强制重新解析"功能上传您修改后的Word文档</p>
+              <p>如果问题持续，使用&quot;强制重新解析&quot;功能上传您修改后的Word文档</p>
             </div>
             <div className="flex items-start">
               <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold mr-3 mt-0.5">3</span>

@@ -792,7 +792,14 @@ export class WordProcessor {
       console.log(`[WordProcessor] 找到重组占位符: ${p}`);
     });
 
-    // 8. 智能字段名推断（基于已知字段模式）
+    // 8. 专门处理Word分割问题的高级算法
+    const wordSplitPlaceholders = this.extractWordSplitPlaceholders(xmlContent);
+    wordSplitPlaceholders.forEach(p => {
+      placeholders.add(p);
+      console.log(`[WordProcessor] 找到Word分割占位符: ${p}`);
+    });
+
+    // 9. 智能字段名推断（基于已知字段模式）
     const inferredPlaceholders = this.inferPlaceholdersFromContent(xmlContent);
     inferredPlaceholders.forEach(p => {
       placeholders.add(p);
@@ -803,6 +810,132 @@ export class WordProcessor {
     console.log(`[WordProcessor] 专业级占位符识别完成，共找到 ${result.length} 个:`, result);
 
     return result;
+  }
+
+  /**
+   * 专门处理Word分割占位符的高级算法
+   * 解决Word将{甲方}分割为 <w:t>{</w:t><w:t>甲方</w:t><w:t>}</w:t> 的问题
+   */
+  private static extractWordSplitPlaceholders(xmlContent: string): string[] {
+    const placeholders: string[] = [];
+
+    console.log('[WordProcessor] 开始Word分割占位符高级识别...');
+
+    try {
+      // 1. 提取所有w:t元素的文本内容，保持顺序
+      const textElements: string[] = [];
+      const textPattern = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+      let match;
+
+      while ((match = textPattern.exec(xmlContent)) !== null) {
+        const text = match[1];
+        if (text) {
+          textElements.push(text);
+        }
+      }
+
+      console.log(`[WordProcessor] 提取到 ${textElements.length} 个文本元素`);
+
+      // 2. 重新组合文本，寻找占位符模式
+      const combinedText = textElements.join('');
+      console.log(`[WordProcessor] 组合文本长度: ${combinedText.length}`);
+
+      // 3. 在组合文本中查找占位符
+      const patterns = [
+        /\{([^{}]+)\}/g,     // 单花括号
+        /\{\{([^}]+)\}\}/g,  // 双花括号
+      ];
+
+      patterns.forEach((pattern, index) => {
+        const patternName = index === 0 ? '单花括号' : '双花括号';
+        pattern.lastIndex = 0; // 重置正则表达式
+
+        while ((match = pattern.exec(combinedText)) !== null) {
+          const placeholder = match[1].trim();
+          if (placeholder &&
+              placeholder.length > 0 &&
+              placeholder.length < 50 &&
+              !placeholder.includes('<') &&
+              !placeholder.includes('>') &&
+              !placeholder.includes('w:')) {
+
+            placeholders.push(placeholder);
+            console.log(`[WordProcessor] Word分割算法找到${patternName}占位符: ${placeholder}`);
+          }
+        }
+      });
+
+      // 4. 滑动窗口算法：处理更复杂的分割情况
+      const windowPlaceholders = this.extractWithSlidingWindow(textElements);
+      windowPlaceholders.forEach(p => {
+        if (!placeholders.includes(p)) {
+          placeholders.push(p);
+          console.log(`[WordProcessor] 滑动窗口算法找到占位符: ${p}`);
+        }
+      });
+
+    } catch (error) {
+      console.error('[WordProcessor] Word分割占位符识别失败:', error);
+    }
+
+    console.log(`[WordProcessor] Word分割算法完成，找到 ${placeholders.length} 个占位符`);
+    return placeholders;
+  }
+
+  /**
+   * 滑动窗口算法：处理复杂的分割情况
+   */
+  private static extractWithSlidingWindow(textElements: string[]): string[] {
+    const placeholders: string[] = [];
+    const windowSize = 10; // 检查前后10个元素
+
+    for (let i = 0; i < textElements.length; i++) {
+      const element = textElements[i];
+
+      // 如果当前元素包含开始括号
+      if (element.includes('{')) {
+        // 向前查找，组合可能的占位符
+        let combined = '';
+        let foundEnd = false;
+
+        for (let j = i; j < Math.min(i + windowSize, textElements.length); j++) {
+          combined += textElements[j];
+
+          // 如果找到结束括号
+          if (textElements[j].includes('}')) {
+            foundEnd = true;
+            break;
+          }
+        }
+
+        if (foundEnd) {
+          // 尝试提取占位符
+          const patterns = [
+            /\{([^{}]+)\}/g,
+            /\{\{([^}]+)\}\}/g
+          ];
+
+          patterns.forEach(pattern => {
+            pattern.lastIndex = 0;
+            let match;
+            while ((match = pattern.exec(combined)) !== null) {
+              const placeholder = match[1].trim();
+              if (placeholder &&
+                  placeholder.length > 0 &&
+                  placeholder.length < 50 &&
+                  !placeholder.includes('<') &&
+                  !placeholder.includes('>')) {
+
+                placeholders.push(placeholder);
+                console.log(`[WordProcessor] 滑动窗口找到: ${placeholder} (组合文本: ${combined})`);
+              }
+            }
+          });
+        }
+      }
+    }
+
+    return Array.from(new Set(placeholders)); // 去重
   }
 
   /**
