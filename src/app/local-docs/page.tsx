@@ -816,6 +816,24 @@ function LocalDocsContent() {
         isVisible={showPreview}
         onClose={handlePreviewClose}
       />
+
+      {/* 工具链接 */}
+      <div className="mt-8 text-center">
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">相关工具</h3>
+          <div className="space-x-4">
+            <Link href="/template-cache-fix" className="text-blue-600 hover:text-blue-800 underline text-sm">
+              模板缓存修复工具
+            </Link>
+            <Link href="/cache-management" className="text-blue-600 hover:text-blue-800 underline text-sm">
+              文件缓存管理
+            </Link>
+            <Link href="/debug-generation" className="text-blue-600 hover:text-blue-800 underline text-sm">
+              调试生成过程
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

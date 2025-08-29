@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
 import { WordProcessor, PlaceholderInfo } from '@/lib/word-processor';
+import { FileCacheManager } from '@/lib/file-cache-manager';
 
 /**
  * 强制重新解析Word模板，绕过任何可能的缓存
@@ -32,12 +33,19 @@ export async function POST(request: NextRequest) {
     console.log(`[Force Reparse] 强制解析: ${forceReparse}`);
     console.log(`[Force Reparse] 清除缓存: ${clearCache}`);
 
+    // 生成文件唯一标识符
+    const fileIdentifier = await FileCacheManager.generateFileIdentifier(file, file.name);
+    console.log(`[Force Reparse] 文件标识符: ${fileIdentifier.uniqueName}`);
+    console.log(`[Force Reparse] 内容哈希: ${fileIdentifier.contentHash.substring(0, 16)}...`);
+
+    // 如果请求清除缓存，则清除相关缓存
+    if (clearCache) {
+      FileCacheManager.clearFileCache(fileIdentifier.contentHash);
+      console.log(`[Force Reparse] 已清除文件缓存`);
+    }
+
     // 获取文件buffer
     const arrayBuffer = await file.arrayBuffer();
-
-    // 计算文件哈希用于缓存检测
-    const fileHash = await calculateFileHash(arrayBuffer);
-    console.log(`[Force Reparse] 文件哈希: ${fileHash}`);
 
     // 验证文件格式
     const isValid = await WordProcessor.validateTemplate(arrayBuffer);
@@ -52,7 +60,10 @@ export async function POST(request: NextRequest) {
     const analysisResult = await performDetailedAnalysis(arrayBuffer, file.name);
 
     // 强制重新解析模板（绕过任何缓存）
-    const documentTemplate = await WordProcessor.parseTemplate(arrayBuffer, file.name);
+    const documentTemplate = await WordProcessor.parseTemplate(arrayBuffer, fileIdentifier.uniqueName);
+
+    // 将文件信息添加到缓存管理器（即使是强制解析也要更新缓存）
+    FileCacheManager.addToCache(fileIdentifier);
 
     console.log(`[Force Reparse] 解析完成，发现 ${documentTemplate.placeholders.length} 个占位符`);
 
@@ -61,19 +72,25 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(createSuccessResponse({
       placeholders: documentTemplate.placeholders,
-      templateName: documentTemplate.templateName,
+      templateName: fileIdentifier.originalName, // 返回原始文件名
       templateSize: file.size,
-      fileHash: fileHash,
+      fileHash: fileIdentifier.contentHash,
       metadata: {
         ...documentTemplate.metadata,
         forceReparsed: true,
         analysisTimestamp: new Date().toISOString(),
-        fileHash: fileHash
+        fileIdentifier: {
+          originalName: fileIdentifier.originalName,
+          uniqueName: fileIdentifier.uniqueName,
+          contentHash: fileIdentifier.contentHash.substring(0, 8) + '...',
+          timestamp: fileIdentifier.timestamp
+        }
       },
       analysis: analysisResult,
       comparison: comparison,
       debugInfo: {
         originalFileName: file.name,
+        uniqueFileName: fileIdentifier.uniqueName,
         processedAt: new Date().toISOString(),
         forceReparse: forceReparse,
         clearCache: clearCache
@@ -98,15 +115,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * 计算文件哈希
- */
-async function calculateFileHash(arrayBuffer: ArrayBuffer): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex.substring(0, 16); // 取前16位作为短哈希
-}
+
 
 /**
  * 执行详细的文档分析
