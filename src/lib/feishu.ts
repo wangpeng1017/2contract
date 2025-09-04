@@ -1,5 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { FeishuOAuthResponse, FeishuUserInfo, FeishuDocument, DocumentContent, DocumentBlock } from '@/types';
+import { getServerEnv } from './env';
+import { logger, redact } from './logger';
 
 /**
  * 飞书API客户端类
@@ -24,11 +26,11 @@ export class FeishuClient {
     // 请求拦截器
     this.client.interceptors.request.use(
       (config) => {
-        console.log(`[Feishu API] ${config.method?.toUpperCase()} ${config.url}`);
+        logger.debug(`[Feishu API] ${config.method?.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
-        console.error('[Feishu API] Request error:', error);
+        logger.error('[Feishu API] Request error:', error);
         return Promise.reject(error);
       }
     );
@@ -36,11 +38,11 @@ export class FeishuClient {
     // 响应拦截器
     this.client.interceptors.response.use(
       (response) => {
-        console.log(`[Feishu API] Response:`, response.data);
+        logger.debug(`[Feishu API] Response OK (${response.status})`);
         return response;
       },
       (error) => {
-        console.error('[Feishu API] Response error:', error.response?.data || error.message);
+        logger.error('[Feishu API] Response error:', error.response?.data || error.message);
         return Promise.reject(error);
       }
     );
@@ -62,7 +64,7 @@ export class FeishuClient {
 
       return response.data.app_access_token;
     } catch (error) {
-      console.error('Error getting app access token:', error);
+      logger.error('Error getting app access token:', error);
       throw error;
     }
   }
@@ -112,7 +114,7 @@ export class FeishuClient {
 
       return response.data.data;
     } catch (error) {
-      console.error('Error getting access token by code:', error);
+      logger.error('Error getting access token by code:', error);
       throw error;
     }
   }
@@ -143,7 +145,7 @@ export class FeishuClient {
 
       return response.data.data;
     } catch (error) {
-      console.error('Error refreshing access token:', error);
+      logger.error('Error refreshing access token:', error);
       throw error;
     }
   }
@@ -165,7 +167,7 @@ export class FeishuClient {
 
       return response.data.data;
     } catch (error) {
-      console.error('Error getting user info:', error);
+      logger.error('Error getting user info:', error);
       throw error;
     }
   }
@@ -199,7 +201,7 @@ export class FeishuClient {
 
       return response.data.data.document;
     } catch (error) {
-      console.error('Error getting document:', error);
+      logger.error('Error getting document:', error);
       throw error;
     }
   }
@@ -224,7 +226,7 @@ export class FeishuClient {
 
       return response.data.data.items || [];
     } catch (error) {
-      console.error('Error getting document blocks:', error);
+      logger.error('Error getting document blocks:', error);
       throw error;
     }
   }
@@ -244,7 +246,7 @@ export class FeishuClient {
         blocks,
       };
     } catch (error) {
-      console.error('Error getting document content:', error);
+      logger.error('Error getting document content:', error);
       throw error;
     }
   }
@@ -273,7 +275,7 @@ export class FeishuClient {
         throw new Error(`Failed to update document block: ${response.data.msg}`);
       }
     } catch (error) {
-      console.error('Error updating document block:', error);
+      logger.error('Error updating document block:', error);
       throw error;
     }
   }
@@ -293,7 +295,7 @@ export class FeishuClient {
 
       await Promise.all(requests);
     } catch (error) {
-      console.error('Error batch updating document blocks:', error);
+      logger.error('Error batch updating document blocks:', error);
       throw error;
     }
   }
@@ -325,7 +327,7 @@ export class FeishuClient {
         throw new Error(`Failed to create document blocks: ${response.data.msg}`);
       }
     } catch (error) {
-      console.error('Error creating document blocks:', error);
+      logger.error('Error creating document blocks:', error);
       throw error;
     }
   }
@@ -377,7 +379,7 @@ export class FeishuClient {
         permissions,
       };
     } catch (error) {
-      console.error('Error checking document permission:', error);
+      logger.error('Error checking document permission:', error);
 
       // 如果权限检查失败，尝试通过文档访问来判断基本权限
       try {
@@ -437,7 +439,7 @@ export class FeishuClient {
         }
       });
     } catch (error) {
-      console.error('Error deleting document blocks:', error);
+      logger.error('Error deleting document blocks:', error);
       throw error;
     }
   }
@@ -447,21 +449,24 @@ export class FeishuClient {
  * 创建飞书客户端实例
  */
 export function createFeishuClient(): FeishuClient {
-  const appId = process.env.FEISHU_APP_ID;
-  const appSecret = process.env.FEISHU_APP_SECRET;
+  // 集中化环境变量读取（保持行为兼容）
+  const env = typeof window === 'undefined' ? getServerEnv() : ({} as any);
+  const appId = env.FEISHU_APP_ID ?? process.env.FEISHU_APP_ID;
+  const appSecret = env.FEISHU_APP_SECRET ?? process.env.FEISHU_APP_SECRET;
 
-  console.log('[FeishuClient] Creating client with credentials check:', {
-    hasAppId: !!appId,
-    hasAppSecret: !!appSecret,
-    appIdLength: appId?.length || 0,
-    appSecretLength: appSecret?.length || 0,
-    nodeEnv: process.env.NODE_ENV,
-    isServer: typeof window === 'undefined',
-  });
+  // 降噪日志：生产环境不打印长度等细节
+  const isServer = typeof window === 'undefined';
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv !== 'production') {
+    logger.debug('[FeishuClient] Creating client with credentials check:', {
+      ...redact.feishuCredentials(appId, appSecret),
+      nodeEnv,
+      isServer,
+    });
+  }
 
   // 在构建时允许缺少凭据，使用占位符
-  if (process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
-    console.log('[FeishuClient] Using build-time placeholders');
+  if (nodeEnv === 'production' && isServer) {
     // 构建时使用占位符，避免构建失败
     return new FeishuClient(
       appId || 'build-time-placeholder',
@@ -472,11 +477,15 @@ export function createFeishuClient(): FeishuClient {
   // 运行时必须有真实凭据
   if (!appId || !appSecret) {
     const error = new Error(`Missing Feishu app credentials: appId=${!!appId}, appSecret=${!!appSecret}`);
-    console.error('[FeishuClient] Credential error:', error.message);
+    if (nodeEnv !== 'production') {
+      logger.error('[FeishuClient] Credential error:', error.message);
+    }
     throw error;
   }
 
-  console.log('[FeishuClient] Creating client with valid credentials');
+  if (nodeEnv !== 'production') {
+    logger.debug('[FeishuClient] Creating client with valid credentials');
+  }
   return new FeishuClient(appId, appSecret);
 }
 
