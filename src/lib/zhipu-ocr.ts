@@ -99,25 +99,31 @@ export interface ContractOCRResult {
 export class ZhipuOCRService {
   private apiKey: string;
   private baseUrl: string = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-  private model: string = 'glm-4.5v';
+  private model: string = 'glm-4v';
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.ZHIPU_API_KEY || '';
-    
+    const { getServerEnv } = require('./env');
+    const env = typeof window === 'undefined' ? getServerEnv() : ({} as any);
+    this.apiKey = apiKey || env.ZHIPU_API_KEY || process.env.ZHIPU_API_KEY || '';
+    if (env.ZHIPU_OCR_MODEL && typeof env.ZHIPU_OCR_MODEL === 'string') {
+      this.model = env.ZHIPU_OCR_MODEL;
+    }
     if (!this.apiKey) {
       throw new Error('智谱AI API密钥未配置');
     }
   }
+
+
 
   /**
    * 通用OCR文字识别
    */
   async extractText(imageData: string, mimeType: string = 'image/jpeg'): Promise<OCRResult> {
     const startTime = Date.now();
-    
+
     try {
       console.log('[ZhipuOCR] 开始文字识别');
-      
+
       // 验证输入
       if (!imageData) {
         throw new Error('图片数据不能为空');
@@ -151,7 +157,7 @@ export class ZhipuOCRService {
     } catch (error) {
       const processingTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : '未知错误';
-      
+
       console.error('[ZhipuOCR] 文字识别失败:', errorMessage);
 
       return {
@@ -173,10 +179,10 @@ export class ZhipuOCRService {
    */
   async extractContract(imageData: string, mimeType: string = 'image/jpeg'): Promise<ContractOCRResult> {
     const startTime = Date.now();
-    
+
     try {
       console.log('[ZhipuOCR] 开始合同识别');
-      
+
       // 验证输入
       if (!imageData) {
         throw new Error('图片数据不能为空');
@@ -271,7 +277,7 @@ export class ZhipuOCRService {
     } catch (error) {
       const processingTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : '未知错误';
-      
+
       console.error('[ZhipuOCR] 合同识别失败:', errorMessage);
 
       return {
@@ -292,33 +298,26 @@ export class ZhipuOCRService {
         }
       };
     }
-  }
+
+
 
   /**
    * 调用智谱AI API
    */
   private async callZhipuAPI(prompt: string, imageData: string, mimeType: string): Promise<any> {
     // 确保图片数据格式正确
-    const base64Data = imageData.startsWith('data:') 
-      ? imageData.split(',')[1] 
+    const base64Data = imageData.startsWith('data:')
+      ? imageData.split(',')[1]
       : imageData;
 
-    const requestBody = {
+    const body = {
       model: this.model,
       messages: [
         {
           role: 'user',
           content: [
-            {
-              type: 'text',
-              text: prompt
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${mimeType};base64,${base64Data}`
-              }
-            }
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } }
           ]
         }
       ],
@@ -329,31 +328,31 @@ export class ZhipuOCRService {
 
     console.log('[ZhipuOCR] 发送API请求');
 
-    const response = await fetch(this.baseUrl, {
+    // 使用模块化的重试工具，避免成员方法解析冲突
+    const { fetchWithRetry } = await import('./zhipu-ocr-retry');
+    const response = await fetchWithRetry(this.baseUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(body),
+    }, {
+      maxRetries: 3,
+      retryOn: (status) => status === 429 || status === 503,
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('[ZhipuOCR] API请求失败:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      });
-      
-      throw new Error(`智谱AI API请求失败: ${response.status} ${response.statusText}`);
+      const errText = await response.text().catch(() => '');
+      throw new Error(`智谱AI API请求失败: ${response.status} ${response.statusText} ${errText}`);
     }
 
     const data = await response.json();
     console.log('[ZhipuOCR] API响应成功');
-
     return data;
   }
+
+
 
   /**
    * 从响应中提取文本
@@ -630,14 +629,14 @@ export class ZhipuOCRService {
 
     // 简单的文本解析逻辑
     const lines = text.split('\n');
-    
+
     for (const line of lines) {
       // 查找甲方乙方
       if (line.includes('甲方') && !result.parties.partyA) {
         const match = line.match(/甲方[：:]\s*(.+?)(?:\s|$|乙方)/);
         if (match) result.parties.partyA = match[1].trim();
       }
-      
+
       if (line.includes('乙方') && !result.parties.partyB) {
         const match = line.match(/乙方[：:]\s*(.+?)(?:\s|$)/);
         if (match) result.parties.partyB = match[1].trim();

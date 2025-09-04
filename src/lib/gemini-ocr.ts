@@ -39,9 +39,16 @@ export class GeminiOCRService {
   private maxRetries: number;
   private timeout: number;
 
-  constructor(apiKey?: string, model: string = 'gemini-2.5-flash') {
-    this.apiKey = apiKey || process.env.GOOGLE_API_KEY || '';
-    this.model = model;
+  constructor(apiKey?: string, model: string = 'gemini-2.5-flash-image-preview') {
+    const { getServerEnv } = require('./env');
+    const env = typeof window === 'undefined' ? getServerEnv() : ({} as any);
+    this.apiKey = apiKey || env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY || '';
+    // 优先使用环境变量覆盖默认模型，并规范化（去掉前缀 models/）
+    let modelInput = env.GEMINI_OCR_MODEL || model;
+    if (typeof modelInput === 'string' && modelInput.startsWith('models/')) {
+      modelInput = modelInput.replace(/^models\//, '');
+    }
+    this.model = modelInput;
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
     this.maxRetries = 3;
     this.timeout = 30000;
@@ -263,7 +270,8 @@ export class GeminiOCRService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
-        const response = await fetch(`${this.baseUrl}/models/${this.model}:generateContent`, {
+        const modelPath = this.model.startsWith('models/') ? this.model : `models/${this.model}`;
+        const response = await fetch(`${this.baseUrl}/${modelPath}:generateContent`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -288,16 +296,8 @@ export class GeminiOCRService {
               topP: 0.8,
               topK: 40
             },
-            safetySettings: [
-              {
-                category: 'HARM_CATEGORY_HARASSMENT',
-                threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-              },
-              {
-                category: 'HARM_CATEGORY_HATE_SPEECH',
-                threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-              }
-            ]
+            // v1beta接口允许省略安全设置，或使用符合最新枚举的设置。
+            // 若后续官方变更，此处应同步。
           })
         });
         
@@ -335,13 +335,25 @@ export class GeminiOCRService {
         return data;
       } catch (error) {
         console.error(`Gemini API attempt ${attempt} failed:`, error);
-        
-        if (attempt === maxRetries) {
+
+        // 对 429/503 等过载类错误进行重试；其余错误直接抛出或少重试
+        const message = error instanceof Error ? error.message : String(error);
+        const shouldRetry = /429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|rate/i.test(message);
+
+        if (attempt === maxRetries || !shouldRetry) {
           throw error;
         }
-        
-        // 指数退避重试
-        await this.delay(Math.pow(2, attempt) * 1000);
+
+        // 指数退避 + 抖动，避免雪崩；并在模型过载时可降级到轻量模型
+        const backoff = Math.pow(2, attempt) * 1000 + Math.floor(Math.random() * 300);
+        await this.delay(backoff);
+
+        // 可选降级：当模型过载时，尝试一次轻量模型
+        if (/overloaded|UNAVAILABLE|503/i.test(message) && attempt === 1) {
+          const fallback = 'models/gemini-1.5-flash';
+          console.warn(`[GeminiOCR] 模型过载，尝试降级到 ${fallback}`);
+          this.model = fallback;
+        }
       }
     }
   }
