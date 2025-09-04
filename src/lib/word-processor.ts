@@ -735,19 +735,21 @@ export class WordProcessor {
 
     console.log('[WordProcessor] 开始专业级占位符识别...');
 
-    // 1. 标准双花括号格式
-    const doublePattern = /\{\{([^}]+)\}\}/g;
+    // 1. 标准双花括号格式（ASCII + 全角）
+    const doublePattern = /(?:\{\{([^}]+)\}\}|\uFF5B\uFF5B([^\uFF5D]+)\uFF5D\uFF5D)/g;
     let match;
     while ((match = doublePattern.exec(xmlContent)) !== null) {
-      const placeholder = match[1].trim();
-      placeholders.add(placeholder);
-      console.log(`[WordProcessor] 找到双花括号占位符: {{${placeholder}}}`);
+      const placeholder = (match[1] || match[2] || '').trim();
+      if (placeholder) {
+        placeholders.add(placeholder);
+        console.log(`[WordProcessor] 找到双花括号占位符: {{${placeholder}}}`);
+      }
     }
 
-    // 2. 单花括号格式
-    const singlePattern = /\{([^{}]+)\}/g;
+    // 2. 单花括号格式（ASCII + 全角）
+    const singlePattern = /(?:\{([^{}]+)\}|\uFF5B([^\uFF5D]+)\uFF5D)/g;
     while ((match = singlePattern.exec(xmlContent)) !== null) {
-      const content = match[1].trim();
+      const content = (match[1] || match[2] || '').trim();
       // 排除XML标签和其他非占位符内容
       if (!content.includes('<') && !content.includes('>') &&
           !content.includes('w:') && content.length > 0 && content.length < 50) {
@@ -851,7 +853,7 @@ export class WordProcessor {
         pattern.lastIndex = 0; // 重置正则表达式
 
         while ((match = pattern.exec(combinedText)) !== null) {
-          const placeholder = match[1].trim();
+          const placeholder = (match[1] || match[2] || '').trim();
           if (placeholder &&
               placeholder.length > 0 &&
               placeholder.length < 50 &&
@@ -912,14 +914,16 @@ export class WordProcessor {
           // 尝试提取占位符
           const patterns = [
             /\{([^{}]+)\}/g,
-            /\{\{([^}]+)\}\}/g
+            /\{\{([^}]+)\}\}/g,
+            /\uFF5B([^\uFF5D]+)\uFF5D/g,           // 全角单花括号
+            /\uFF5B\uFF5B([^\uFF5D]+)\uFF5D\uFF5D/g // 全角双花括号
           ];
 
           patterns.forEach(pattern => {
             pattern.lastIndex = 0;
             let match;
             while ((match = pattern.exec(combined)) !== null) {
-              const placeholder = match[1].trim();
+              const placeholder = (match[1] || match[2] || '').trim();
               if (placeholder &&
                   placeholder.length > 0 &&
                   placeholder.length < 50 &&
@@ -1377,18 +1381,21 @@ export class WordProcessor {
 
     // 各种占位符格式
     const patterns = [
-      /\{\{([^}]+)\}\}/g,      // 双花括号
-      /\{([^{}]+)\}/g,         // 单花括号
-      /\[([^\]]+)\]/g,         // 方括号
-      /_{3,}/g,                // 下划线
+      /\{\{([^}]+)\}\}/g,                      // 双花括号
+      /\{([^{}]+)\}/g,                           // 单花括号
+      /\uFF5B\uFF5B([^\uFF5D]+)\uFF5D\uFF5D/g,  // 全角双花括号
+      /\uFF5B([^\uFF5D]+)\uFF5D/g,               // 全角单花括号
+      /\[([^\]]+)\]/g,                           // 方括号
+      /_{3,}/g,                                    // 下划线
       /\.{3,}/g,               // 点线
     ];
 
     patterns.forEach(pattern => {
       let match;
       while ((match = pattern.exec(text)) !== null) {
-        if (match[1]) {
-          const placeholder = match[1].trim();
+        const captured = match[1] || match[2];
+        if (captured) {
+          const placeholder = captured.trim();
           if (placeholder && placeholder.length > 0 && placeholder.length < 50) {
             placeholders.push(placeholder);
           }
@@ -1429,12 +1436,16 @@ export class WordProcessor {
         const stringValue = String(value || '');
         let fieldReplaced = false;
 
-        // 尝试多种占位符格式
+        // 尝试多种占位符格式（支持ASCII与全角花括号）
         const placeholderFormats = [
-          `{{${key}}}`,           // 标准双花括号
-          `{${key}}`,             // 单花括号
-          `{{${key.trim()}}}`,    // 去除空格的双花括号
-          `{${key.trim()}}`,      // 去除空格的单花括号
+          `{{${key}}}`,                         // 标准双花括号
+          `{${key}}`,                           // 单花括号
+          `{{${key.trim()}}}`,                  // 去除空格的双花括号
+          `{${key.trim()}}`,                    // 去除空格的单花括号
+          `\uFF5B\uFF5B${key}\uFF5D\uFF5D`, // 全角双花括号
+          `\uFF5B${key}\uFF5D`,               // 全角单花括号
+          `\uFF5B\uFF5B${key.trim()}\uFF5D\uFF5D`,
+          `\uFF5B${key.trim()}\uFF5D`,
         ];
 
         for (const placeholder of placeholderFormats) {
@@ -1536,11 +1547,17 @@ export class WordProcessor {
 
     // 4. 尝试替换跨节点分割的占位符
     if (!replaced) {
+      const head = fieldName.substring(0, Math.min(3, fieldName.length));
+      const tail = fieldName.slice(-3); // 修复：substring(-3) 无效，使用 slice(-3)
+      const escapedFull = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
       const crossNodePatterns = [
-        // 匹配 <w:t>{{字段</w:t>...<w:t>名}}</w:t> 这样的分割
-        new RegExp(`<w:t[^>]*>\\{\\{[^<]*${fieldName.substring(0, Math.min(3, fieldName.length))}[^<]*</w:t>.*?<w:t[^>]*>[^<]*${fieldName.substring(-3)}[^<]*\\}\\}</w:t>`, 'g'),
+        // 匹配 <w:t>{{字段</w:t>...<w:t>名}}</w:t>（ASCII花括号）
+        new RegExp(`<w:t[^>]*>\\{\\{[^<]*${head}[^<]*</w:t>[\\s\\S]{0,800}?<w:t[^>]*>[^<]*${tail}[^<]*\\}\\}</w:t>`, 'g'),
+        // 匹配 <w:t>｛｛字段</w:t>...<w:t>名｝｝</w:t>（全角花括号）
+        new RegExp(`<w:t[^>]*>\uFF5B\uFF5B[^<]*${head}[^<]*</w:t>[\\s\\S]{0,800}?<w:t[^>]*>[^<]*${tail}[^<]*\uFF5D\uFF5D</w:t>`, 'g'),
         // 匹配包含字段名关键词的模式
-        new RegExp(`<w:t[^>]*>[^<]*${fieldName}[^<]*</w:t>`, 'g'),
+        new RegExp(`<w:t[^>]*>[^<]*${escapedFull}[^<]*</w:t>`, 'g'),
       ];
 
       for (const pattern of crossNodePatterns) {
@@ -1876,6 +1893,13 @@ export class WordProcessor {
    */
   private static escapeRegExp(string: string): string {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * 归一化花括号：将全角｛｝转换为 ASCII {}，便于统一识别与替换
+   */
+  private static normalizeBraces(text: string): string {
+    return text.replace(/\uFF5B/g, '{').replace(/\uFF5D/g, '}');
   }
 
   /**
