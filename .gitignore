@@ -134,3 +134,13 @@ private/
 *.bak
 *.old
 *~
+
+
+# Baseline test reports (generated)
+baseline-report-*.json
+baseline-report-*.md
+
+# Office temporary files
+~$*.docx
+~$*.xlsx
+~$*.pptx
