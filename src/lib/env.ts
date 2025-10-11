@@ -9,9 +9,6 @@ const ServerEnvSchema = z.object({
   POSTGRES_URL_NON_POOLING: z.string().optional(),
   ENCRYPTION_KEY: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),
-  ZHIPU_API_KEY: z.string().optional(),
-  GEMINI_OCR_MODEL: z.string().optional(),
-  ZHIPU_OCR_MODEL: z.string().optional(),
 });
 
 let parsedServerEnv: z.infer<typeof ServerEnvSchema> | null = null;
@@ -36,10 +33,7 @@ export function getServerEnv() {
         POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
         ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
         GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-        ZHIPU_API_KEY: process.env.ZHIPU_API_KEY,
-        GEMINI_OCR_MODEL: process.env.GEMINI_OCR_MODEL,
-        ZHIPU_OCR_MODEL: process.env.ZHIPU_OCR_MODEL,
-      } as any;
+      };
     } else {
       parsedServerEnv = result.data;
     }
