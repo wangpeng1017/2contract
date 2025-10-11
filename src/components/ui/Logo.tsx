@@ -45,7 +45,7 @@ export function Logo({ className = '', size = 'md', showText = true }: LogoProps
       
       {showText && (
         <h1 className={`${textSizes[size]} font-semibold text-gray-900`}>
-          智能文档处理助手
+          智能合同
         </h1>
       )}
     </div>

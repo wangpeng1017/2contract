@@ -10,7 +10,7 @@ export default function HomePage() {
       {/* 欢迎区域 - 压缩高度 */}
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-3">
-          智能文档处理助手
+          智能合同
         </h1>
         <p className="text-lg text-gray-600 mb-2">
           提供本地文档处理和飞书云文档处理两种解决方案
