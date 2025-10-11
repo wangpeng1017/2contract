@@ -383,7 +383,7 @@ export class WordProcessor {
         return { maxLength: 1000 };
 
       case 'tel':
-        return { pattern: '^[0-9+\\-\\s()]+$', minLength: 7, maxLength: 20 };
+        return { pattern: '^[0-9+\\-\\s()]+$', maxLength: 20 };
 
       case 'email':
         return { pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$' };
@@ -598,7 +598,7 @@ export class WordProcessor {
         type: 'tel',
         required: true,
         description: '请输入甲方联系电话',
-        validation: { pattern: '^[0-9+\\-\\s()]+$', minLength: 7, maxLength: 20 },
+        validation: { pattern: '^[0-9+\\-\\s()]+$', maxLength: 20 },
         placeholder: '138-0000-0000',
         helpText: '请输入有效的电话号码'
       },
