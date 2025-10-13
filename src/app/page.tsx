@@ -1,168 +1,215 @@
+/**
+ * 智能合同模板系统 - 主页面
+ */
 'use client';
 
-import { FileText, Cloud, Download, Zap, Shield, Users } from 'lucide-react';
-import Link from 'next/link';
+import { useUIStore, useTemplateStore } from '@/lib/store';
+import TemplateUploader from '@/components/TemplateUploader';
+import DynamicForm from '@/components/DynamicForm';
+import DocumentDownload from '@/components/DocumentDownload';
+import { 
+  DocumentTextIcon, 
+  SparklesIcon, 
+  CheckCircleIcon 
+} from '@heroicons/react/24/outline';
 
-export default function HomePage() {
+export default function Home() {
+  const { currentStep, isLoading, loadingMessage, error } = useUIStore();
+  const { currentTemplate, variables } = useTemplateStore();
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* 欢迎区域 - 压缩高度 */}
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-3">
-          智能合同
-        </h1>
-        <p className="text-lg text-gray-600 mb-2">
-          提供本地文档处理和飞书云文档处理两种解决方案
-        </p>
-        <p className="text-sm text-gray-500">
-          选择适合您需求的文档处理方式，提升工作效率
-        </p>
-      </div>
-
-      {/* 核心功能模块 - 压缩间距 */}
-      <div className="grid md:grid-cols-2 gap-6 mb-8">
-        {/* 本地文档处理模块 */}
-        <div className="card p-6 hover:shadow-lg transition-all duration-300 border-2 hover:border-blue-200">
-          <div className="text-center mb-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <FileText size={24} className="text-blue-600" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* 头部 */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <DocumentTextIcon className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">
+                  智能合同模板系统
+                </h1>
+                <p className="text-sm text-gray-500">
+                  AI 驱动 · 一键生成 · 高保真输出
+                </p>
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              本地文档处理
-            </h2>
-            <p className="text-sm text-gray-600">
-              智能合同模板填充系统，无需注册，本地处理
+          </div>
+        </div>
+      </header>
+
+      {/* 主体内容 */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 步骤指示器 */}
+        <div className="mb-8">
+          <nav aria-label="Progress">
+            <ol className="flex items-center justify-center space-x-4">
+              {/* Step 1 */}
+              <li className="flex items-center">
+                <div
+                  className={`
+                    flex items-center justify-center w-10 h-10 rounded-full border-2
+                    ${currentStep >= 1 
+                      ? 'bg-blue-600 border-blue-600' 
+                      : 'bg-white border-gray-300'
+                    }
+                  `}
+                >
+                  {currentStep > 1 ? (
+                    <CheckCircleIcon className="h-6 w-6 text-white" />
+                  ) : (
+                    <span className={`text-sm font-semibold ${currentStep === 1 ? 'text-white' : 'text-gray-400'}`}>
+                      1
+                    </span>
+                  )}
+                </div>
+                <span className={`ml-2 text-sm font-medium ${currentStep >= 1 ? 'text-gray-900' : 'text-gray-500'}`}>
+                  上传模板
+                </span>
+              </li>
+
+              <div className={`h-0.5 w-16 ${currentStep >= 2 ? 'bg-blue-600' : 'bg-gray-300'}`} />
+
+              {/* Step 2 */}
+              <li className="flex items-center">
+                <div
+                  className={`
+                    flex items-center justify-center w-10 h-10 rounded-full border-2
+                    ${currentStep >= 2 
+                      ? 'bg-blue-600 border-blue-600' 
+                      : 'bg-white border-gray-300'
+                    }
+                  `}
+                >
+                  {currentStep > 2 ? (
+                    <CheckCircleIcon className="h-6 w-6 text-white" />
+                  ) : (
+                    <span className={`text-sm font-semibold ${currentStep === 2 ? 'text-white' : 'text-gray-400'}`}>
+                      2
+                    </span>
+                  )}
+                </div>
+                <span className={`ml-2 text-sm font-medium ${currentStep >= 2 ? 'text-gray-900' : 'text-gray-500'}`}>
+                  填写信息
+                </span>
+              </li>
+
+              <div className={`h-0.5 w-16 ${currentStep >= 3 ? 'bg-blue-600' : 'bg-gray-300'}`} />
+
+              {/* Step 3 */}
+              <li className="flex items-center">
+                <div
+                  className={`
+                    flex items-center justify-center w-10 h-10 rounded-full border-2
+                    ${currentStep >= 3 
+                      ? 'bg-blue-600 border-blue-600' 
+                      : 'bg-white border-gray-300'
+                    }
+                  `}
+                >
+                  <span className={`text-sm font-semibold ${currentStep === 3 ? 'text-white' : 'text-gray-400'}`}>
+                    3
+                  </span>
+                </div>
+                <span className={`ml-2 text-sm font-medium ${currentStep >= 3 ? 'text-gray-900' : 'text-gray-500'}`}>
+                  下载合同
+                </span>
+              </li>
+            </ol>
+          </nav>
+        </div>
+
+        {/* 加载状态 */}
+        {isLoading && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              <p className="ml-3 text-sm text-blue-800">
+                {loadingMessage || '处理中...'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* 错误提示 */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-800">
+              ❌ {error}
             </p>
           </div>
+        )}
 
-          <div className="space-y-2 mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">上传Word模板文件</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">自动识别占位符</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">动态生成填写表单</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">一键生成完整文档</span>
+        {/* 当前模板信息 */}
+        {currentTemplate && currentStep > 1 && (
+          <div className="mb-6 p-4 bg-white rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  当前模板: {currentTemplate.name}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  识别变量: {variables.length} 个
+                </p>
+              </div>
+              <SparklesIcon className="h-5 w-5 text-blue-600" />
             </div>
           </div>
+        )}
 
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <div className="flex items-center space-x-1">
-              <Shield size={14} className="text-green-600" />
-              <span className="text-xs text-gray-600">无需注册</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Download size={14} className="text-green-600" />
-              <span className="text-xs text-gray-600">本地处理</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Zap size={14} className="text-green-600" />
-              <span className="text-xs text-gray-600">即时生成</span>
-            </div>
-          </div>
-
-          <Link
-            href="/local-docs"
-            className="btn-primary w-full text-center block py-2 text-base font-semibold"
-          >
-            开始使用本地处理
-          </Link>
+        {/* 内容区域 */}
+        <div className="mt-8">
+          {currentStep === 1 && <TemplateUploader />}
+          {currentStep === 2 && <DynamicForm />}
+          {currentStep === 3 && <DocumentDownload />}
         </div>
 
-        {/* 飞书文档处理模块 */}
-        <div className="card p-6 hover:shadow-lg transition-all duration-300 border-2 hover:border-blue-200">
-          <div className="text-center mb-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Cloud size={24} className="text-blue-600" />
+        {/* 特性介绍 */}
+        {currentStep === 1 && (
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-6 bg-white rounded-lg shadow-sm">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <SparklesIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">AI 智能识别</h3>
+              <p className="text-sm text-gray-600">
+                自动识别变量类型（文本、日期、金额、电话等），智能生成表单
+              </p>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              飞书文档处理
-            </h2>
-            <p className="text-sm text-gray-600">
-              云端协作文档智能更新，OCR识别与文本替换
-            </p>
-          </div>
 
-          <div className="space-y-2 mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">飞书账号登录</span>
+            <div className="p-6 bg-white rounded-lg shadow-sm">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                <DocumentTextIcon className="h-6 w-6 text-purple-600" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">高保真渲染</h3>
+              <p className="text-sm text-gray-600">
+                完全保留原模板格式，字体、颜色、表格、样式一致
+              </p>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">OCR图片识别</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">智能文本替换</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-gray-700">云端文档更新</span>
-            </div>
-          </div>
 
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <div className="flex items-center space-x-1">
-              <Users size={14} className="text-blue-600" />
-              <span className="text-xs text-gray-600">团队协作</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Cloud size={14} className="text-blue-600" />
-              <span className="text-xs text-gray-600">云端同步</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Zap size={14} className="text-blue-600" />
-              <span className="text-xs text-gray-600">智能识别</span>
+            <div className="p-6 bg-white rounded-lg shadow-sm">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                <CheckCircleIcon className="h-6 w-6 text-green-600" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">极速生成</h3>
+              <p className="text-sm text-gray-600">
+                毫秒级生成速度，自动格式化日期和金额，一键下载
+              </p>
             </div>
           </div>
+        )}
+      </main>
 
-          <Link
-            href="/workspace"
-            className="btn-secondary w-full text-center block py-2 text-base font-semibold border-blue-300 text-blue-700 hover:bg-blue-50"
-          >
-            进入飞书文档处理
-          </Link>
+      {/* 页脚 */}
+      <footer className="mt-12 border-t bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <p className="text-center text-sm text-gray-500">
+            智能合同模板系统 · Powered by FastAPI + Next.js + Gemini AI
+          </p>
         </div>
-      </div>
-
-      {/* 功能对比说明 - 压缩版本 */}
-      <div className="card p-4 bg-gradient-to-r from-gray-50 to-blue-50 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 text-center mb-4">
-          选择适合您的文档处理方式
-        </h3>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <h4 className="text-sm font-semibold text-blue-700 mb-2">本地文档处理适用于：</h4>
-            <ul className="space-y-1 text-xs text-gray-700">
-              <li>• 需要快速生成标准化合同文档</li>
-              <li>• 对数据隐私有严格要求</li>
-              <li>• 不需要团队协作功能</li>
-              <li>• 希望离线使用的场景</li>
-              <li>• 基于模板的批量文档生成</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-blue-700 mb-2">飞书文档处理适用于：</h4>
-            <ul className="space-y-1 text-xs text-gray-700">
-              <li>• 需要团队协作和云端同步</li>
-              <li>• 已有飞书文档需要更新</li>
-              <li>• 需要OCR图片识别功能</li>
-              <li>• 希望智能化文本替换</li>
-              <li>• 多人协作编辑的场景</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+      </footer>
     </div>
   );
 }

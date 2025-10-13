@@ -4,6 +4,15 @@
 /node_modules
 /.pnp
 .pnp.js
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/**/*.pyc
+*.py[cod]
+*$py.class
 .yarn/install-state.gz
 
 # testing
@@ -144,3 +153,5 @@ baseline-report-*.md
 ~$*.docx
 ~$*.xlsx
 ~$*.pptx
+
+.vercel

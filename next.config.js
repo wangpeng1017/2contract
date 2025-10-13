@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone', // 支持 Docker 容器部署
   experimental: {
     serverComponentsExternalPackages: ['crypto-js']
   },

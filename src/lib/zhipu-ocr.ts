@@ -104,6 +104,14 @@ export class ZhipuOCRService {
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.ZHIPU_API_KEY || '';
     
+    // 注意：不在构造函数中抛出错误，而是在实际调用时检查
+    // 这样可以避免在构建时因为缺少 API 密钥而失败
+  }
+
+  /**
+   * 检查 API 密钥是否已配置
+   */
+  private checkApiKey(): void {
     if (!this.apiKey) {
       throw new Error('智谱AI API密钥未配置');
     }
@@ -116,6 +124,9 @@ export class ZhipuOCRService {
     const startTime = Date.now();
     
     try {
+      // 检查 API 密钥
+      this.checkApiKey();
+      
       console.log('[ZhipuOCR] 开始文字识别');
       
       // 验证输入
@@ -175,6 +186,9 @@ export class ZhipuOCRService {
     const startTime = Date.now();
     
     try {
+      // 检查 API 密钥
+      this.checkApiKey();
+      
       console.log('[ZhipuOCR] 开始合同识别');
       
       // 验证输入
@@ -712,5 +726,24 @@ export class ZhipuOCRService {
   }
 }
 
-// 导出默认实例
-export const zhipuOCR = new ZhipuOCRService();
+/**
+ * 创建 ZhipuOCR 服务实例
+ */
+export function createZhipuOCRService(apiKey?: string): ZhipuOCRService {
+  return new ZhipuOCRService(apiKey);
+}
+
+/**
+ * 默认 ZhipuOCR 服务实例（延迟初始化）
+ * 使用 Proxy 模式避免在构建时因缺少 API 密钥而失败
+ */
+let _zhipuOCR: ZhipuOCRService | null = null;
+
+export const zhipuOCR = new Proxy({} as ZhipuOCRService, {
+  get(target, prop) {
+    if (!_zhipuOCR) {
+      _zhipuOCR = createZhipuOCRService();
+    }
+    return (_zhipuOCR as any)[prop];
+  }
+});
