@@ -22,6 +22,7 @@ class GenerateRequest(BaseModel):
     template_id: str = Field(..., description="模板 ID")
     data: Dict[str, Any] = Field(..., description="填充数据")
     filename: Optional[str] = Field(None, description="输出文件名")
+    template_storage_key: Optional[str] = Field(None, description="模板在MinIO中的存储键")
 
 
 class GenerateResponse(BaseModel):
@@ -51,7 +52,12 @@ async def generate_document(request: GenerateRequest):
         logger.info(f"开始生成文档: template_id={request.template_id}")
         
         # 获取模板内容
-        if request.template_id == "test":
+        if request.template_storage_key:
+            # 从 MinIO 直接下载模板
+            storage = get_storage_service()
+            template_bytes = await storage.download(request.template_storage_key)
+            logger.info(f"从 MinIO 加载模板: {request.template_storage_key}")
+        elif request.template_id == "test":
             # 测试模式：使用测试模板
             template_bytes = await _get_test_template()
         else:
@@ -69,28 +75,45 @@ async def generate_document(request: GenerateRequest):
         if not output_filename.endswith('.docx'):
             output_filename += '.docx'
         
-        # 保存到临时存储（简化版：使用缓存）
-        output_key = f"generated/{datetime.now().strftime('%Y%m%d')}/{output_filename}"
+        # 上传到 MinIO
+        storage = get_storage_service()
+        document_id = str(uuid.uuid4())
+        output_key = f"generated/{datetime.now().strftime('%Y%m%d')}/{document_id}_{output_filename}"
         
-        # 使用缓存存储文件信息
+        # 上传文件到 MinIO
+        storage_url = await storage.upload(
+            object_name=output_key,
+            data=output_bytes,
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            metadata={
+                "document_id": document_id,
+                "original_filename": output_filename,
+                "generation_time": datetime.now().isoformat()
+            }
+        )
+        
+        # 生成预签名 URL（1小时有效）
+        from datetime import timedelta
+        download_url = storage.get_presigned_url(
+            object_name=output_key,
+            expires=timedelta(hours=1)
+        )
+        
+        # 同时保留缓存作为备选方案
         from services.cache_service import get_cache_service
         cache = get_cache_service()
-        
-        document_id = str(uuid.uuid4())
-        
-        # 将文档信息存储到缓存（包括文件内容）
         import base64
         doc_info = {
             "document_id": document_id,
             "filename": output_filename,
             "storage_key": output_key,
+            "storage_url": storage_url,
             "file_size": len(output_bytes),
             "file_content": base64.b64encode(output_bytes).decode('utf-8'),  # Base64 编码
             "created_at": datetime.now().isoformat()
         }
         
         await cache.set(f"generated_doc:{document_id}", doc_info, ttl=3600)  # 1小时
-        output_url = f"/api/v1/generate/document/{document_id}/download"
         
         # 计算生成时间
         generation_time = (datetime.now() - start_time).total_seconds() * 1000
@@ -107,7 +130,7 @@ async def generate_document(request: GenerateRequest):
         
         return GenerateResponse(
             document_id=document_id,
-            download_url=f"/api/v1/generate/document/{document_id}/download",
+            download_url=download_url,  # MinIO 预签名 URL
             filename=output_filename,
             file_size=len(output_bytes),
             generation_time_ms=generation_time
@@ -124,15 +147,12 @@ async def generate_document(request: GenerateRequest):
 @router.get("/document/{document_id}/download")
 async def download_document(document_id: str):
     """
-    下载生成的文档
+    下载生成的文档（备用接口，主要使用 MinIO 预签名 URL）
     
     - **document_id**: 文档 ID
     """
     try:
-        # TODO: 从数据库获取文档记录
-        # 目前使用简化版本，直接从缓存获取
-        
-        # 简化实现：使用全局缓存
+        # 从缓存获取文档信息
         from services.cache_service import get_cache_service
         cache = get_cache_service()
         
@@ -141,17 +161,36 @@ async def download_document(document_id: str):
         if not doc_info:
             raise HTTPException(404, "文档不存在或已过期")
         
-        # 从缓存中获取文件内容
-        import base64
-        file_bytes = base64.b64decode(doc_info["file_content"])
+        # 优先从 MinIO 下载
+        if "storage_key" in doc_info:
+            try:
+                storage = get_storage_service()
+                file_bytes = await storage.download(doc_info["storage_key"])
+                
+                return Response(
+                    content=file_bytes,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{doc_info["filename"]}"'
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"从 MinIO 下载失败，回退到缓存: {e}")
         
-        return Response(
-            content=file_bytes,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={
-                "Content-Disposition": f'attachment; filename="{doc_info["filename"]}"'
-            }
-        )
+        # 回退到缓存下载
+        if "file_content" in doc_info:
+            import base64
+            file_bytes = base64.b64decode(doc_info["file_content"])
+            
+            return Response(
+                content=file_bytes,
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{doc_info["filename"]}"'
+                }
+            )
+        
+        raise HTTPException(404, "文档内容不可用")
         
     except HTTPException:
         raise

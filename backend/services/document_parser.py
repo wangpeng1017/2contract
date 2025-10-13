@@ -26,33 +26,35 @@ class DocumentParser:
     
     def extract_text(self) -> str:
         """
-        提取文档全文
+        提取文档全文（保持阅读顺序）
         
         Returns:
-            文档的纯文本内容
+            文档的纯文本内容，按照段落和表格在文档中的顺序
         """
+        from docx.text.paragraph import Paragraph
+        from docx.table import Table
+        
         full_text = []
         
         try:
-            # 提取段落文本
-            for para in self.doc.paragraphs:
-                text = para.text.strip()
-                if text:
-                    full_text.append(text)
+            # 按照文档元素顺序遍历（段落和表格交错）
+            for element in self.doc.element.body:
+                # 处理段落
+                if element.tag.endswith('p'):
+                    paragraph = Paragraph(element, self.doc)
+                    text = paragraph.text.strip()
+                    if text:
+                        full_text.append(text)
+                
+                # 处理表格
+                elif element.tag.endswith('tbl'):
+                    table = Table(element, self.doc)
+                    table_text = self._extract_table_text_ordered(table)
+                    if table_text:
+                        full_text.append(table_text)
             
-            # 提取表格文本
-            for table in self.doc.tables:
-                for row in table.rows:
-                    row_text = []
-                    for cell in row.cells:
-                        cell_text = cell.text.strip()
-                        if cell_text:
-                            row_text.append(cell_text)
-                    if row_text:
-                        full_text.append(" | ".join(row_text))
-            
-            result = "\n".join(full_text)
-            logger.info(f"成功提取文本，长度: {len(result)} 字符")
+            result = "\n\n".join(full_text)
+            logger.info(f"成功提取文本（阅读顺序），长度: {len(result)} 字符")
             return result
             
         except Exception as e:
@@ -182,8 +184,33 @@ class DocumentParser:
             return metadata
             
         except Exception as e:
-            logger.warning(f"获取元数据失败: {e}")
+            logger.error(f"获取元数据失败: {e}")
             return {}
+    
+    def _extract_table_text_ordered(self, table) -> str:
+        """
+        从表格中提取文本（保持行列顺序）
+        
+        Args:
+            table: docx表格对象
+            
+        Returns:
+            str: 表格文本内容
+        """
+        table_texts = []
+        
+        for row in table.rows:
+            row_texts = []
+            for cell in row.cells:
+                cell_text = cell.text.strip()
+                if cell_text:
+                    row_texts.append(cell_text)
+            
+            if row_texts:
+                # 用制表符分隔单元格
+                table_texts.append(' | '.join(row_texts))
+        
+        return '\n'.join(table_texts)
 
 
 class DocumentParserFactory:

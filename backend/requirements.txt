@@ -31,5 +31,11 @@ minio==7.2.9
 # 缓存
 redis==5.2.0
 
+# AI与LLM
+langchain==0.1.6
+langchain-openai==0.0.5
+langchain-google-genai==0.0.6
+langchain-core==0.1.23
+
 # 其他
 aiofiles==24.1.0
