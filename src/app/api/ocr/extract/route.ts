@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
-import { zhipuOCR } from '@/lib/zhipu-ocr';
+import { geminiOCR } from '@/lib/gemini-ocr';
 import { createSuccessResponse, createErrorResponse } from '@/lib/utils';
 
 /**
@@ -74,8 +74,8 @@ async function handleOCRRequest(req: NextRequest, user: any) {
 
         if (extractStructured) {
           console.log('[OCR Extract] 执行结构化信息提取...');
-          // 结构化信息提取 - 使用智谱AI
-          result = await zhipuOCR.extractText(base64Data, file.type);
+          // 结构化信息提取 - 使用 Gemini AI
+          result = await geminiOCR.extractText(base64Data, file.type);
 
           // 为了保持兼容性，添加structuredData字段
           if (result.success) {
@@ -86,8 +86,8 @@ async function handleOCRRequest(req: NextRequest, user: any) {
           }
         } else {
           console.log('[OCR Extract] 执行基础文字识别...');
-          // 基础文字识别 - 使用智谱AI
-          result = await zhipuOCR.extractText(base64Data, file.type);
+          // 基础文字识别 - 使用 Gemini AI
+          result = await geminiOCR.extractText(base64Data, file.type);
         }
 
         console.log('[OCR Extract] OCR处理完成:', {
@@ -133,9 +133,9 @@ async function handleOCRRequest(req: NextRequest, user: any) {
 
         // 根据错误类型返回不同的错误信息
         if (ocrError instanceof Error) {
-          if (ocrError.message.includes('API key') || ocrError.message.includes('智谱AI API密钥')) {
+          if (ocrError.message.includes('API key') || ocrError.message.includes('Gemini') || ocrError.message.includes('智谱AI')) {
             return NextResponse.json(
-              createErrorResponse('OCR_API_KEY_ERROR', 'OCR服务配置错误，请检查智谱AI API密钥配置'),
+              createErrorResponse('OCR_API_KEY_ERROR', 'OCR服务配置错误，请检查 Gemini API 密钥配置'),
               { status: 500 }
             );
           }

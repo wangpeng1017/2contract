@@ -1,9 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
-import { zhipuOCR, ContractInfo } from '@/lib/zhipu-ocr';
+import { geminiOCR } from '@/lib/gemini-ocr';
 import { TextReplaceEngine, ReplaceRule } from '@/lib/text-replace';
 import { ContractValidator } from '@/lib/contract-validators';
 import { createSuccessResponse, createErrorResponse, generateRandomString } from '@/lib/utils';
+
+// 合同信息类型（与 zhipu-ocr 兼容）
+interface ContractInfo {
+  contractNumber?: string;
+  contractType?: string;
+  signDate?: string;
+  effectiveDate?: string;
+  expiryDate?: string;
+  parties: {
+    partyA?: any;
+    partyB?: any;
+  };
+  vehicles?: any[];
+  priceDetails?: any;
+  amounts: string[];
+  dates: string[];
+  keyTerms: string[];
+  fullText: string;
+}
 
 /**
  * 合同信息提取并生成替换规则
@@ -57,8 +76,8 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
         const arrayBuffer = await file.arrayBuffer();
         const base64Data = Buffer.from(arrayBuffer).toString('base64');
 
-        // 提取合同信息 - 使用智谱AI
-        const contractResult = await zhipuOCR.extractContract(base64Data, file.type);
+        // 提取合同信息 - 使用 Gemini AI OCR
+        const contractResult = await geminiOCR.extractContractInfo(base64Data, file.type);
 
         if (!contractResult.success) {
           throw new Error(contractResult.error || '合同信息提取失败');
