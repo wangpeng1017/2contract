@@ -1,28 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
-import { geminiOCR } from '@/lib/gemini-ocr';
+import { geminiOCR, ContractInfo } from '@/lib/gemini-ocr';
 import { TextReplaceEngine, ReplaceRule } from '@/lib/text-replace';
 import { ContractValidator } from '@/lib/contract-validators';
 import { createSuccessResponse, createErrorResponse, generateRandomString } from '@/lib/utils';
-
-// 合同信息类型（与 zhipu-ocr 兼容）
-interface ContractInfo {
-  contractNumber?: string;
-  contractType?: string;
-  signDate?: string;
-  effectiveDate?: string;
-  expiryDate?: string;
-  parties: {
-    partyA?: any;
-    partyB?: any;
-  };
-  vehicles?: any[];
-  priceDetails?: any;
-  amounts: string[];
-  dates: string[];
-  keyTerms: string[];
-  fullText: string;
-}
 
 /**
  * 合同信息提取并生成替换规则
@@ -164,11 +145,8 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
               fileName: file.name,
               fileSize: file.size,
               fileType: file.type,
-              extractedFields: countExtractedFields(contractInfo),
-              rulesGenerated: replacementRules.length,
-              hasVehicleInfo: !!(contractInfo.vehicles && contractInfo.vehicles.length > 0),
-              hasContactInfo: !!(contractInfo.parties.partyA?.contact || contractInfo.parties.partyB?.contact),
-              hasPriceDetails: !!contractInfo.priceDetails
+              extractedFields: Object.keys(contractInfo).length,
+              rulesGenerated: replacementRules.length
             },
             suggestions: generateSuggestions(contractInfo)
           })
