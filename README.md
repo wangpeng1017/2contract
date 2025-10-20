@@ -4,12 +4,13 @@
 
 ## 技术架构
 
-- **前端**:纯 HTML/CSS/JavaScript(静态托管)
-- **后端**:Vercel Serverless Functions (Python)
+- **框架**: Next.js 14 (App Router)
+- **运行时**: Node.js
+- **语言**: TypeScript
 - **核心库**:
-  - `python-docx`:文档解析
-  - `docxtpl`:Jinja2 模板渲染
-  - `google-generativeai`:AI 变量提取 (Gemini 1.5 Flash)
+  - `mammoth`: docx 文档解析
+  - `docxtemplater`: Jinja2 模板渲染
+  - `@google/generative-ai`: Gemini 1.5 Flash AI 提取
 
 ## 工作流程
 
