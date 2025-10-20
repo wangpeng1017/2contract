@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
-from openai import OpenAI
+import google.generativeai as genai
 from pinyin import get as pinyin_get
 
 class handler(BaseHTTPRequestHandler):
@@ -16,35 +16,46 @@ class handler(BaseHTTPRequestHandler):
                 self.send_error(400, "Missing 'text' field")
                 return
             
-            # 调用OpenAI提取变量
-            client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+            # 调用Gemini提取变量
+            genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            system_prompt = """你是一个合同变量提取专家。分析用户提供的合同文本，识别所有需要填充的变量字段。
-输出格式为JSON数组，每个变量包含：
+            prompt = f"""你是一个合同变量提取专家。分析用户提供的合同文本，识别所有需要填充的变量字段。
+输出格式为JSON对象，包含一个variables数组，每个变量包含：
 - key: 变量的ASCII键名（使用拼音，如 jiafang, yifang, sign_date）
 - label: 变量的中文标签（如 甲方, 乙方, 签订日期）
 - type: 数据类型（text, date, number）
 - required: 是否必填（true/false）
 
 示例输出：
-[
-  {"key": "jiafang", "label": "甲方", "type": "text", "required": true},
-  {"key": "yifang", "label": "乙方", "type": "text", "required": true},
-  {"key": "sign_date", "label": "签订日期", "type": "date", "required": true},
-  {"key": "amount", "label": "合同金额", "type": "number", "required": true}
-]"""
+{{
+  "variables": [
+    {{"key": "jiafang", "label": "甲方", "type": "text", "required": true}},
+    {{"key": "yifang", "label": "乙方", "type": "text", "required": true}},
+    {{"key": "sign_date", "label": "签订日期", "type": "date", "required": true}},
+    {{"key": "amount", "label": "合同金额", "type": "number", "required": true}}
+  ]
+}}
+
+合同文本：
+{contract_text}
+
+请只返回JSON，不要包含其他文字。"""
             
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"合同文本：\n{contract_text}"}
-                ],
-                response_format={"type": "json_object"}
-            )
+            response = model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # 移除可能的markdown代码块标记
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.startswith('```'):
+                response_text = response_text[3:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
             
             # 解析AI返回的JSON
-            ai_result = json.loads(response.choices[0].message.content)
+            ai_result = json.loads(response_text)
             
             # 确保返回数组格式
             if isinstance(ai_result, dict) and 'variables' in ai_result:

@@ -9,12 +9,12 @@
 - **核心库**:
   - `python-docx`:文档解析
   - `docxtpl`:Jinja2 模板渲染
-  - `openai`:AI 变量提取
+  - `google-generativeai`:AI 变量提取 (Gemini 1.5 Flash)
 
 ## 工作流程
 
 1. **上传模板**:用户上传 `.docx` 格式合同模板
-2. **AI 分析**:使用 OpenAI GPT-4o-mini 提取可变字段
+2. **AI 分析**:使用 Google Gemini 1.5 Flash 提取可变字段
 3. **表单填写**:动态生成表单供用户填写
 4. **文档生成**:使用 `docxtpl` 渲染最终合同
 5. **下载交付**:返回填充完整的 `.docx` 文件
@@ -28,8 +28,8 @@
 pip install -r requirements.txt
 
 # 设置环境变量
-set OPENAI_API_KEY=sk-your-api-key  # Windows PowerShell
-export OPENAI_API_KEY=sk-your-api-key  # Linux/Mac
+set GEMINI_API_KEY=your-gemini-api-key  # Windows PowerShell
+export GEMINI_API_KEY=your-gemini-api-key  # Linux/Mac
 ```
 
 ### 本地测试
@@ -63,16 +63,23 @@ vercel --prod
 
 1. 将代码推送到 GitHub 仓库
 2. 在 [Vercel Dashboard](https://vercel.com/dashboard) 导入项目
-3. 配置环境变量 `OPENAI_API_KEY`
+3. 在 Settings → Environment Variables 添加 `GEMINI_API_KEY`
 4. 自动部署完成
 
 ### 环境变量配置
 
 在 Vercel 项目设置中添加:
 
-| 变量名 | 说明 | 示例值 |
-|--------|------|--------|
-| `OPENAI_API_KEY` | OpenAI API 密钥 | `sk-proj-...` |
+| 变量名 | 说明 | 获取地址 |
+|--------|------|----------|
+| `GEMINI_API_KEY` | Google Gemini API 密钥 | [https://makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey) |
+
+**配置步骤**:
+1. 访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. 创建 API Key
+3. 在 Vercel 项目中：Settings → Environment Variables → Add New
+4. Name: `GEMINI_API_KEY`, Value: 粘贴你的密钥
+5. 选择应用环境（Production, Preview, Development）
 
 ## API 端点
 
@@ -156,8 +163,9 @@ AI 提取变量
 ## 常见问题
 
 ### 1. API 调用失败
-- 检查 `OPENAI_API_KEY` 环境变量是否正确设置
-- 确认 API Key 有足够的配额
+- 检查 `GEMINI_API_KEY` 环境变量是否正确设置
+- 确认 API Key 有效且有配额
+- Gemini API 免费额度：每分钟15次请求
 
 ### 2. 文档格式丢失
 - 确保使用原始 `.docx` 文件作为模板
