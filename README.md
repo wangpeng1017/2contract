@@ -1,237 +1,191 @@
-# 飞书合同内容更新助手
+# 🤖 智能合同生成系统
 
-一款基于 Next.js 和飞书开放平台的 Web 应用，旨在简化和自动化更新飞书云文档（特别是合同范本）中的特定内容。
+基于 AI 的合同模板解析与自动填充系统,支持 Vercel 一键部署。
 
-## 🚀 功能特性
+## 技术架构
 
-### 核心功能
-- **飞书 OAuth 2.0 认证** - 安全的用户身份验证和授权
-- **智能文本替换** - 基于自定义规则的批量文本查找替换
-- **OCR 截图识别** - 上传截图自动识别并提取文本信息
-- **实时预览** - 替换操作前的结果预览
-- **操作日志** - 完整的操作记录和审计追踪
+- **前端**:纯 HTML/CSS/JavaScript(静态托管)
+- **后端**:Vercel Serverless Functions (Python)
+- **核心库**:
+  - `python-docx`:文档解析
+  - `docxtpl`:Jinja2 模板渲染
+  - `openai`:AI 变量提取
 
-### 技术特性
-- **现代化技术栈** - Next.js 14 + TypeScript + Tailwind CSS
-- **无服务器架构** - 基于 Vercel Serverless Functions
-- **安全可靠** - 数据加密存储，权限严格控制
-- **响应式设计** - 支持桌面端和移动端访问
+## 工作流程
 
-## 🛠️ 技术架构
+1. **上传模板**:用户上传 `.docx` 格式合同模板
+2. **AI 分析**:使用 OpenAI GPT-4o-mini 提取可变字段
+3. **表单填写**:动态生成表单供用户填写
+4. **文档生成**:使用 `docxtpl` 渲染最终合同
+5. **下载交付**:返回填充完整的 `.docx` 文件
 
-### 前端技术栈
-- **框架**: Next.js 14 (App Router)
-- **语言**: TypeScript
-- **样式**: Tailwind CSS
-- **状态管理**: Zustand
-- **表单处理**: React Hook Form + Zod
-- **UI组件**: Lucide React Icons
+## 本地开发
 
-### 后端技术栈
-- **运行时**: Node.js (Vercel Serverless Functions)
-- **数据库**: Vercel Postgres
-- **文件存储**: Vercel Blob
-- **缓存**: Vercel KV (Redis)
+### 环境准备
 
-### 第三方服务
-- **认证**: 飞书开放平台 OAuth 2.0
-- **文档API**: 飞书云文档 API
-- **OCR服务**: Tesseract.js + 百度OCR API
-- **部署平台**: Vercel
-
-## 📦 安装和运行
-
-### 环境要求
-- Node.js 18.0 或更高版本
-- npm 或 yarn 包管理器
-
-### 本地开发
-
-1. **克隆项目**
 ```bash
-git clone <repository-url>
-cd feishu-contract-helper
+# 安装 Python 依赖
+pip install -r requirements.txt
+
+# 设置环境变量
+set OPENAI_API_KEY=sk-your-api-key  # Windows PowerShell
+export OPENAI_API_KEY=sk-your-api-key  # Linux/Mac
 ```
 
-2. **安装依赖**
+### 本地测试
+
 ```bash
-npm install
-# 或
-yarn install
+# 安装 Vercel CLI
+npm install -g vercel
+
+# 启动本地开发服务器
+vercel dev
 ```
 
-3. **配置环境变量**
+访问 `http://localhost:3000` 查看应用。
+
+## Vercel 部署
+
+### 方式一:命令行部署
+
 ```bash
-cp .env.example .env.local
-```
+# 登录 Vercel
+vercel login
 
-编辑 `.env.local` 文件，填入必要的配置信息：
-- 飞书开放平台应用配置
-- 数据库连接字符串
-- Vercel 存储服务配置
-- 加密密钥等
+# 首次部署
+vercel
 
-4. **启动开发服务器**
-```bash
-npm run dev
-# 或
-yarn dev
-```
-
-访问 [http://localhost:3000](http://localhost:3000) 查看应用。
-
-### 生产部署
-
-1. **部署到 Vercel**
-```bash
-npm run build
+# 生产部署
 vercel --prod
 ```
 
-2. **配置环境变量**
-在 Vercel 控制台中配置生产环境的环境变量。
+### 方式二:GitHub 集成
 
-## 🔧 配置说明
+1. 将代码推送到 GitHub 仓库
+2. 在 [Vercel Dashboard](https://vercel.com/dashboard) 导入项目
+3. 配置环境变量 `OPENAI_API_KEY`
+4. 自动部署完成
 
-### 飞书开放平台配置
+### 环境变量配置
 
-1. 访问 [飞书开放平台](https://open.feishu.cn/)
-2. 创建企业自建应用
-3. 获取 App ID 和 App Secret
-4. 配置回调地址：`https://your-domain.com/api/auth/callback`
-5. 开启云文档相关权限
+在 Vercel 项目设置中添加:
 
-### 数据库配置
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| `OPENAI_API_KEY` | OpenAI API 密钥 | `sk-proj-...` |
 
-项目使用 Vercel Postgres 作为数据库，需要：
-1. 在 Vercel 控制台创建 Postgres 数据库
-2. 获取数据库连接字符串
-3. 运行数据库迁移脚本
+## API 端点
 
-### 存储配置
+### POST /api/upload
+上传并解析 docx 模板
 
-使用 Vercel Blob 存储上传的图片文件：
-1. 在 Vercel 控制台启用 Blob 存储
-2. 获取访问令牌
-3. 配置相关环境变量
-
-## 📚 使用指南
-
-### 基本使用流程
-
-1. **用户认证**
-   - 点击登录按钮
-   - 跳转到飞书授权页面
-   - 完成授权后返回应用
-
-2. **选择文档**
-   - 输入飞书文档链接
-   - 系统验证文档有效性和访问权限
-
-3. **设置更新方式**
-   
-   **方式一：自定义指令**
-   - 添加替换规则（查找内容 → 替换内容）
-   - 支持多个规则批量执行
-   - 可设置匹配选项（大小写敏感、全词匹配等）
-
-   **方式二：OCR截图识别**
-   - 上传包含新信息的截图
-   - 系统自动识别文字内容
-   - 智能提取结构化信息并生成替换规则
-
-4. **执行更新**
-   - 预览替换结果
-   - 确认后执行文档更新
-   - 查看操作结果和日志
-
-### 高级功能
-
-- **批量替换**: 支持一次性执行多个替换规则
-- **智能匹配**: 支持精确匹配和模糊匹配
-- **操作回滚**: 记录操作历史，支持查看和分析
-- **权限控制**: 严格的用户权限验证和访问控制
-
-## 🔒 安全说明
-
-### 数据安全
-- 所有敏感数据采用 AES-256 加密存储
-- access_token 安全管理，定期刷新
-- 环境变量管理敏感配置，不在代码中硬编码
-
-### 访问控制
-- 基于飞书 OAuth 2.0 的用户身份验证
-- API 访问频率限制
-- 文档访问权限严格检查
-
-### 数据传输
-- 全站 HTTPS 强制加密
-- API 请求签名验证
-- 跨域请求严格控制
-
-## 🧪 测试
-
-```bash
-# 运行单元测试
-npm run test
-
-# 运行集成测试
-npm run test:integration
-
-# 运行端到端测试
-npm run test:e2e
-
-# 代码覆盖率
-npm run test:coverage
+**请求体**:
+```json
+{
+  "file": "base64_encoded_docx"
+}
 ```
 
-## 📝 开发规范
-
-### 代码规范
-- 使用 ESLint + Prettier 进行代码格式化
-- TypeScript 严格模式
-- 遵循 Git 提交规范
-
-### 目录结构
-```
-src/
-├── app/                 # Next.js App Router 页面
-├── components/          # React 组件
-├── lib/                # 工具库和配置
-├── types/              # TypeScript 类型定义
-├── hooks/              # 自定义 React Hooks
-├── services/           # API 服务层
-└── utils/              # 通用工具函数
+**响应**:
+```json
+{
+  "text": "提取的纯文本",
+  "original_file": "base64_encoded_original"
+}
 ```
 
-## 🤝 贡献指南
+### POST /api/extract
+AI 提取变量
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
+**请求体**:
+```json
+{
+  "text": "合同文本内容"
+}
+```
 
-## 📄 许可证
+**响应**:
+```json
+{
+  "variables": [
+    {
+      "key": "jiafang",
+      "label": "甲方",
+      "type": "text",
+      "required": true
+    }
+  ]
+}
+```
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+### POST /api/render
+渲染最终文档
 
-## 📞 支持
+**请求体**:
+```json
+{
+  "template": "base64_original_file",
+  "data": {
+    "jiafang": "某某公司",
+    "yifang": "某某个人"
+  }
+}
+```
 
-如果您在使用过程中遇到问题，请：
+**响应**:
+```json
+{
+  "file": "base64_encoded_result",
+  "filename": "contract_filled.docx"
+}
+```
 
-1. 查看 [使用文档](docs/)
-2. 搜索 [Issues](../../issues)
-3. 创建新的 [Issue](../../issues/new)
+## 模板要求
 
-## 🙏 致谢
+合同模板需使用 Jinja2 语法标记变量(AI 会自动识别并建议):
 
-感谢以下开源项目和服务：
-- [Next.js](https://nextjs.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [飞书开放平台](https://open.feishu.cn/)
-- [Vercel](https://vercel.com/)
+```
+甲方:{{ jiafang }}
+乙方:{{ yifang }}
+签订日期:{{ sign_date }}
+合同金额:{{ amount }} 元
+```
 
----
+**注意**:首次上传时无需手动标记,AI 会识别潜在变量并提示用户确认。
 
-**飞书合同内容更新助手** - 让文档更新更简单、更高效！
+## 常见问题
+
+### 1. API 调用失败
+- 检查 `OPENAI_API_KEY` 环境变量是否正确设置
+- 确认 API Key 有足够的配额
+
+### 2. 文档格式丢失
+- 确保使用原始 `.docx` 文件作为模板
+- 避免在纯文本编辑器中打开模板
+
+### 3. 变量提取不准确
+- 在模板中使用明确的字段标识(如"甲方:"、"日期:")
+- 可调整 `api/extract.py` 中的 system prompt
+
+## 技术细节
+
+### 文本提取逻辑
+使用 `python-docx` 的 `element.body` 按 DOM 顺序遍历:
+- 段落 (`<w:p>`)
+- 表格 (`<w:tbl>`)
+- 保留原始阅读顺序
+
+### 变量命名规范
+- **key**:ASCII 拼音(`jiafang`, `sign_date`)
+- **label**:中文显示标签(`甲方`, `签订日期`)
+- 使用 `pinyin` 库自动转换
+
+### 渲染机制
+`docxtpl` 基于 Jinja2,支持:
+- 变量替换:`{{ variable }}`
+- 条件判断:`{% if condition %}`
+- 循环:`{% for item in list %}`
+
+## License
+
+MIT

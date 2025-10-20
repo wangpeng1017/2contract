@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能合同生成系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .step {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .step-title {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .upload-area {
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f7fafc;
+        }
+        .upload-area.active {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+        input[type="file"] { display: none; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        button:hover { background: #5a67d8; transform: translateY(-1px); }
+        button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #2d3748;
+            font-size: 14px;
+        }
+        input[type="text"],
+        input[type="date"],
+        input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .hidden { display: none; }
+        .success-message {
+            background: #48bb78;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .error-message {
+            background: #f56565;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+        .file-info {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #2d3748;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 智能合同生成系统</h1>
+        <p class="subtitle">上传模板 → AI提取变量 → 填写信息 → 生成合同</p>
+
+        <!-- 步骤1：上传模板 -->
+        <div class="step">
+            <div class="step-title">📤 步骤 1：上传合同模板</div>
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept=".docx">
+                <div>点击或拖拽上传 .docx 文件</div>
+            </div>
+            <div id="fileInfo" class="file-info hidden"></div>
+            <button id="uploadBtn" style="margin-top: 15px;" disabled>开始解析</button>
+        </div>
+
+        <!-- 步骤2：AI提取变量（隐藏直到文件上传完成） -->
+        <div class="step hidden" id="step2">
+            <div class="step-title">🧠 步骤 2：AI 正在分析合同...</div>
+            <p style="color: #718096;">系统正在识别合同中的可变字段</p>
+        </div>
+
+        <!-- 步骤3：填写表单 -->
+        <div class="step hidden" id="step3">
+            <div class="step-title">✍️ 步骤 3：填写合同信息</div>
+            <form id="contractForm"></form>
+            <button id="generateBtn" style="margin-top: 15px;">生成合同</button>
+        </div>
+
+        <!-- 步骤4：下载文档 -->
+        <div class="step hidden" id="step4">
+            <div class="step-title">✅ 步骤 4：合同生成成功</div>
+            <button id="downloadBtn">下载合同文档</button>
+        </div>
+
+        <div id="errorMsg" class="error-message hidden"></div>
+    </div>
+
+    <script>
+        let originalFile = null;
+        let extractedVariables = [];
+        let generatedFile = null;
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        const errorMsg = document.getElementById('errorMsg');
+
+        // 文件选择
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('active');
+        });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('active'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('active');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (file) {
+                fileInfo.textContent = `已选择: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                fileInfo.classList.remove('hidden');
+                uploadBtn.disabled = false;
+            }
+        }
+
+        // 步骤1：上传并解析
+        uploadBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '解析中<span class="loading"></span>';
+
+            try {
+                const base64 = await fileToBase64(file);
+                
+                // 调用upload API
+                const uploadRes = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: base64 })
+                });
+                const uploadData = await uploadRes.json();
+                
+                if (!uploadRes.ok) throw new Error(uploadData.error || '解析失败');
+                
+                originalFile = uploadData.original_file;
+                document.getElementById('step2').classList.remove('hidden');
+
+                // 调用extract API
+                const extractRes = await fetch('/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: uploadData.text })
+                });
+                const extractData = await extractRes.json();
+                
+                if (!extractRes.ok) throw new Error(extractData.error || '变量提取失败');
+                
+                extractedVariables = extractData.variables || [];
+                renderForm();
+                
+                document.getElementById('step2').classList.add('hidden');
+                document.getElementById('step3').classList.remove('hidden');
+                
+            } catch (error) {
+                showError(error.message);
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '开始解析';
+            }
+        });
+
+        // 渲染表单
+        function renderForm() {
+            const form = document.getElementById('contractForm');
+            form.innerHTML = '';
+            
+            extractedVariables.forEach(variable => {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                
+                const label = document.createElement('label');
+                label.textContent = variable.label + (variable.required ? ' *' : '');
+                
+                const input = document.createElement('input');
+                input.name = variable.key;
+                input.type = variable.type === 'date' ? 'date' : variable.type === 'number' ? 'number' : 'text';
+                input.required = variable.required;
+                
+                div.appendChild(label);
+                div.appendChild(input);
+                form.appendChild(div);
+            });
+        }
+
+        // 步骤3：生成合同
+        document.getElementById('generateBtn').addEventListener('click', async () => {
+            const form = document.getElementById('contractForm');
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData);
+            
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '生成中<span class="loading"></span>';
+
+            try {
+                const renderRes = await fetch('/api/render', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        template: originalFile,
+                        data: data
+                    })
+                });
+                const renderData = await renderRes.json();
+                
+                if (!renderRes.ok) throw new Error(renderData.error || '生成失败');
+                
+                generatedFile = renderData.file;
+                document.getElementById('step4').classList.remove('hidden');
+                
+            } catch (error) {
+                showError(error.message);
+                generateBtn.disabled = false;
+                generateBtn.textContent = '生成合同';
+            }
+        });
+
+        // 步骤4：下载
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.href = 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,' + generatedFile;
+            link.download = 'contract_' + Date.now() + '.docx';
+            link.click();
+        });
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function showError(message) {
+            errorMsg.textContent = '❌ ' + message;
+            errorMsg.classList.remove('hidden');
+            setTimeout(() => errorMsg.classList.add('hidden'), 5000);
+        }
+    </script>
+</body>
+</html>
