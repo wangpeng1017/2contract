@@ -1,37 +1,27 @@
+from flask import Flask, request, jsonify
 import json
 import os
 import google.generativeai as genai
 from pinyin import get as pinyin_get
 
-def handler(request):
+app = Flask(__name__)
+
+@app.route('/api/extract', methods=['POST', 'OPTIONS'])
+def extract():
     # 处理CORS预检请求
     if request.method == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type'
-            }
-        }
-    
-    if request.method != 'POST':
-        return {
-            'statusCode': 405,
-            'body': json.dumps({'error': 'Method not allowed'}),
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}
-        }
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        return response
     
     try:
-        data = request.json
+        data = request.get_json()
         
         contract_text = data.get('text')
         if not contract_text:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': "Missing 'text' field"}),
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}
-            }
+            return jsonify({'error': "Missing 'text' field"}), 400
         
         # 调用Gemini提取变量
         genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
@@ -89,21 +79,11 @@ def handler(request):
         
         result = {'variables': variables}
         
-        return {
-            'statusCode': 200,
-            'body': json.dumps(result, ensure_ascii=False),
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
+        response = jsonify(result)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
         
     except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)}),
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
+        response = jsonify({'error': str(e)})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response, 500

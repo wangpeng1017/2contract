@@ -1,38 +1,27 @@
-import json
+from flask import Flask, request, jsonify
 import base64
 from io import BytesIO
 from docx import Document
 
-def handler(request):
+app = Flask(__name__)
+
+@app.route('/api/upload', methods=['POST', 'OPTIONS'])
+def upload():
     # 处理CORS预检请求
     if request.method == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type'
-            }
-        }
-    
-    if request.method != 'POST':
-        return {
-            'statusCode': 405,
-            'body': json.dumps({'error': 'Method not allowed'}),
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}
-        }
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        return response
     
     try:
-        data = request.json
+        data = request.get_json()
         
         # 接收base64编码的docx文件
         file_b64 = data.get('file')
         if not file_b64:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': "Missing 'file' field"}),
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}
-            }
+            return jsonify({'error': "Missing 'file' field"}), 400
         
         # 解码并解析docx
         file_bytes = base64.b64decode(file_b64)
@@ -60,26 +49,16 @@ def handler(request):
         extracted_text = '\n'.join(text_parts)
         
         # 同时返回原始文件的base64（供后续渲染使用）
-        response = {
+        response_data = {
             'text': extracted_text,
             'original_file': file_b64
         }
         
-        return {
-            'statusCode': 200,
-            'body': json.dumps(response, ensure_ascii=False),
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
+        response = jsonify(response_data)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
         
     except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)}),
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
+        response = jsonify({'error': str(e)})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response, 500
