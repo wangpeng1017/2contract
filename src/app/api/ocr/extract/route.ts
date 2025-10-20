@@ -74,20 +74,18 @@ async function handleOCRRequest(req: NextRequest, user: any) {
 
         if (extractStructured) {
           console.log('[OCR Extract] 执行结构化信息提取...');
-          // 结构化信息提取 - 使用 Gemini AI
-          result = await geminiOCR.extractText(base64Data, file.type);
+          // 结构化信息提取 - 使用 Gemini AI（返回文本与置信度）
+          result = await geminiOCR.extractText(base64Data, { language });
 
           // 为了保持兼容性，添加structuredData字段
-          if (result.success) {
-            (result as any).structuredData = {
-              extractedText: result.text,
-              confidence: result.confidence
-            };
-          }
+          (result as any).structuredData = {
+            extractedText: result.text,
+            confidence: result.confidence
+          };
         } else {
           console.log('[OCR Extract] 执行基础文字识别...');
           // 基础文字识别 - 使用 Gemini AI
-          result = await geminiOCR.extractText(base64Data, file.type);
+          result = await geminiOCR.extractText(base64Data, { language });
         }
 
         console.log('[OCR Extract] OCR处理完成:', {
