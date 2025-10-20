@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Docxtemplater from 'docxtemplater';
-import PizZip from 'pizzip';
+import { createReport } from 'docx-templates';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -17,28 +16,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 解码base64模板
-    const buffer = Buffer.from(template, 'base64');
+    const templateBuffer = Buffer.from(template, 'base64');
     
-    // 使用PizZip加载模板
-    const zip = new PizZip(buffer);
-    
-    // 创建Docxtemplater实例
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-    });
-
-    // 渲染模板
-    doc.render(data);
-
-    // 生成输出文件
-    const output = doc.getZip().generate({
-      type: 'nodebuffer',
-      compression: 'DEFLATE',
+    // 使用docx-templates渲染
+    const output = await createReport({
+      template: templateBuffer,
+      data: data,
+      cmdDelimiter: ['{{', '}}'],
     });
 
     // 转换为base64
-    const resultBase64 = output.toString('base64');
+    const resultBase64 = Buffer.from(output).toString('base64');
 
     return NextResponse.json({
       file: resultBase64,
