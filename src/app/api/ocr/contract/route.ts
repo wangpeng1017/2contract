@@ -77,13 +77,7 @@ async function handleContractOCRRequest(req: NextRequest, user: any) {
         const base64Data = Buffer.from(arrayBuffer).toString('base64');
 
         // 提取合同信息 - 使用 Gemini AI OCR
-        const contractResult = await geminiOCR.extractContractInfo(base64Data, file.type);
-
-        if (!contractResult.success) {
-          throw new Error(contractResult.error || '合同信息提取失败');
-        }
-
-        const contractInfo = contractResult.contractInfo;
+        const contractInfo = await geminiOCR.extractContractInfo(base64Data);
 
         // 验证提取的合同信息
         console.log('[Contract OCR] 开始验证合同信息');
