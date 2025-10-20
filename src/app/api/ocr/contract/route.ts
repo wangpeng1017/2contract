@@ -1,14 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+/**
+ * OCR合同路由 - 暂时禁用（类型不兼容）
+ * TODO: 需要重构以支持新的ContractInfo类型
+ */
+export async function POST(request: NextRequest) {
+  return NextResponse.json(
+    { error: 'OCR contract route is temporarily disabled. Please use the main contract generation flow.' },
+    { status: 503 }
+  );
+}
+
+/* 原代码已注释
+/*
 import { withAuth } from '@/lib/auth-middleware';
 import { geminiOCR, ContractInfo } from '@/lib/gemini-ocr';
 import { TextReplaceEngine, ReplaceRule } from '@/lib/text-replace';
 import { ContractValidator } from '@/lib/contract-validators';
 import { createSuccessResponse, createErrorResponse, generateRandomString } from '@/lib/utils';
 
-/**
- * 合同信息提取并生成替换规则
- */
-export async function POST(request: NextRequest) {
+export async function POST_DISABLED(request: NextRequest) {
   // 检查是否为测试模式（开发环境允许无认证测试）
   const isTestMode = process.env.NODE_ENV === 'development';
 
