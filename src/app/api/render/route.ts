@@ -2,7 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createReport } from 'docx-templates';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 30;
+
+// 超时包装函数
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('文档处理超时，请检查模板大小'));
+    }, timeoutMs);
+    
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => clearTimeout(timeoutId));
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,12 +32,15 @@ export async function POST(request: NextRequest) {
     // 解码base64模板
     const templateBuffer = Buffer.from(template, 'base64');
     
-    // 使用docx-templates渲染
-    const output = await createReport({
-      template: templateBuffer,
-      data: data,
-      cmdDelimiter: ['{{', '}}'],
-    });
+    // 使用docx-templates渲染，添加超时保护
+    const output = await withTimeout(
+      createReport({
+        template: templateBuffer,
+        data: data,
+        cmdDelimiter: ['{{', '}}'],
+      }),
+      25000 // 25秒超时
+    );
 
     // 转换为base64
     const resultBase64 = Buffer.from(output).toString('base64');

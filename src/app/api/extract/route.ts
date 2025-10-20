@@ -2,7 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 30;
+
+// 超时包装函数
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('请求超时，请尝试处理较短的文档'));
+    }, timeoutMs);
+    
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => clearTimeout(timeoutId));
+  });
+}
 
 // 简单的拼音转换（仅用于常见汉字）
 function simplePinyin(chinese: string): string {
@@ -26,6 +40,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 限制文本长度避免超时
+    const maxTextLength = 5000; // 限制5000字符
+    const processedText = text.length > maxTextLength 
+      ? text.substring(0, maxTextLength) + '...'
+      : text;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -56,11 +76,15 @@ export async function POST(request: NextRequest) {
 }
 
 合同文本：
-${text}
+${processedText}
 
 请只返回JSON，不要包含其他文字。`;
 
-    const result = await model.generateContent(prompt);
+    // 使用超时包装AI调用，25秒超时
+    const result = await withTimeout(
+      model.generateContent(prompt),
+      25000
+    );
     const response = result.response;
     let responseText = response.text().trim();
 

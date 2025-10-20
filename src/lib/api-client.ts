@@ -6,7 +6,9 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 // API 基础配置
 // 使用相对路径调用 Next.js API Routes（同源）
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_TIMEOUT = 30000; // 30 秒
+const API_TIMEOUT = 25000; // 25 秒 - 匹配Vercel限制
+const RETRY_ATTEMPTS = 1; // 重试次数
+const RETRY_DELAY = 1000; // 重试延迟
 
 // 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({
@@ -47,7 +49,6 @@ apiClient.interceptors.response.use(
           break;
         case 401:
           console.error('未授权，请登录');
-          // TODO: 跳转登录页
           break;
         case 404:
           console.error('资源不存在:', data.detail);
@@ -55,11 +56,20 @@ apiClient.interceptors.response.use(
         case 500:
           console.error('服务器错误:', data.detail);
           break;
+        case 504:
+          console.error('请求超时，请尝试处理较小的文档');
+          error.message = '处理超时，请尝试处理较小的文档或稍后重试';
+          break;
         default:
           console.error('请求失败:', data.detail || error.message);
       }
     } else if (error.request) {
-      console.error('网络错误，请检查网络连接');
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        console.error('请求超时，请尝试处理较小的文档');
+        error.message = '处理超时，请尝试处理较小的文档或稍后重试';
+      } else {
+        console.error('网络错误，请检查网络连接');
+      }
     } else {
       console.error('请求配置错误:', error.message);
     }

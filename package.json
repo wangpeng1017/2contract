@@ -31,7 +31,11 @@
     "test-permissions": "node scripts/test-document-permissions.js",
     "test-parser": "node scripts/test-document-parser.js",
     "test-secure-update": "node scripts/test-secure-update.js",
-    "prepare": "node scripts/security-check-strict.js"
+    "prepare": "node scripts/security-check-strict.js",
+    "vercel:deploy": "vercel --prod",
+    "vercel:dev": "vercel dev",
+    "vercel:preview": "vercel",
+    "test:api": "node scripts/test-api-timeout.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
